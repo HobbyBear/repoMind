@@ -2,6 +2,9 @@ package graph
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +18,19 @@ type ModuleCandidate struct {
 	Paths []string `json:"paths"`
 }
 
+type SymbolInfo struct {
+	Name string `json:"name"`
+	File string `json:"file"`
+	Pkg  string `json:"pkg,omitempty"`
+}
+
 type Summary struct {
-	Mode             string          `json:"mode"`
-	Files            []string        `json:"files"`
+	Mode             string            `json:"mode"`
+	Files            []string          `json:"files"`
 	ModuleCandidates []ModuleCandidate `json:"module_candidates"`
-	EntryFiles       []string        `json:"entry_files,omitempty"`
-	Communities      []CommunityInfo `json:"communities,omitempty"`
+	EntryFiles       []string          `json:"entry_files,omitempty"`
+	Communities      []CommunityInfo   `json:"communities,omitempty"`
+	Symbols          []SymbolInfo      `json:"symbols,omitempty"`
 }
 
 type CommunityInfo struct {
@@ -104,12 +114,26 @@ func parseGraphJSON(path, repoRoot string) (*Summary, error) {
 		}
 	}
 
+	var symbols []SymbolInfo
+	for _, n := range g.Nodes {
+		if n.SourceFile == "" || n.Label == "" {
+			continue
+		}
+		pkg := extractPkg(n.ID, n.SourceFile)
+		symbols = append(symbols, SymbolInfo{
+			Name: n.Label,
+			File: n.SourceFile,
+			Pkg:  pkg,
+		})
+	}
+
 	return &Summary{
 		Mode:             "graphify",
 		Files:            files,
 		ModuleCandidates: candidates,
 		EntryFiles:       entryFiles,
 		Communities:      communities,
+		Symbols:          symbols,
 	}, nil
 }
 
@@ -161,11 +185,20 @@ func fallbackScan(repoRoot string) (*Summary, error) {
 			}
 		}
 	}
+
+	var symbols []SymbolInfo
+	for _, f := range files {
+		if strings.HasSuffix(f, ".go") {
+			symbols = append(symbols, scanGoSymbols(repoRoot, f)...)
+		}
+	}
+
 	return &Summary{
 		Mode:             "fallback",
 		Files:            files,
 		ModuleCandidates: candidates,
 		EntryFiles:       entryFiles,
+		Symbols:          symbols,
 	}, nil
 }
 
@@ -176,6 +209,54 @@ func topDir(path string) string {
 		return ""
 	}
 	return parts[0]
+}
+
+func extractPkg(id, sourceFile string) string {
+	if idx := strings.LastIndex(id, "."); idx != -1 {
+		return id[:idx]
+	}
+	return topDir(sourceFile)
+}
+
+func scanGoSymbols(repoRoot, filePath string) []SymbolInfo {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filepath.Join(repoRoot, filePath), nil, 0)
+	if err != nil {
+		return nil
+	}
+	pkgName := f.Name.Name
+	var symbols []SymbolInfo
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		name := fn.Name.Name
+		if fn.Recv != nil && len(fn.Recv.List) > 0 {
+			recv := receiverType(fn.Recv.List[0].Type)
+			if recv != "" {
+				name = recv + "." + name
+			}
+		}
+		symbols = append(symbols, SymbolInfo{
+			Name: name,
+			File: filePath,
+			Pkg:  pkgName,
+		})
+	}
+	return symbols
+}
+
+func receiverType(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.StarExpr:
+		if ident, ok := e.X.(*ast.Ident); ok {
+			return "*" + ident.Name
+		}
+	case *ast.Ident:
+		return e.Name
+	}
+	return ""
 }
 
 func WriteSummary(graphDir string, s *Summary) error {

@@ -242,3 +242,181 @@ func InternalInstallCmd() *cobra.Command {
 		Hidden: true,
 	}
 }
+
+func UninstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove RepoMind from the current git repository",
+		Long:  "Remove all RepoMind files, skills, git hooks, and configuration from the current git repository.",
+		RunE:  runUninstall,
+	}
+}
+
+func runUninstall(cmd *cobra.Command, args []string) error {
+	repoRoot, err := gitutil.GitRoot()
+	if err != nil {
+		return fmt.Errorf("not in a git repository: %w", err)
+	}
+	repomindDir := filepath.Join(repoRoot, ".repomind")
+
+	if !fsutil.Exists(repomindDir) {
+		fmt.Println("RepoMind is not installed (no .repomind/ directory found).")
+		return nil
+	}
+
+	fmt.Print("This will remove all RepoMind files, skills, and configuration. Continue? [y/N] ")
+	var answer string
+	fmt.Scanln(&answer)
+	if strings.ToLower(answer) != "y" && strings.ToLower(answer) != "yes" {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	// .repomind/
+	if err := os.RemoveAll(repomindDir); err != nil {
+		return fmt.Errorf("failed to remove .repomind/: %w", err)
+	}
+	fmt.Println("Removed .repomind/")
+
+	// skills
+	for _, skillsDir := range []string{
+		filepath.Join(repoRoot, ".claude", "skills"),
+		filepath.Join(repoRoot, ".codex", "skills"),
+	} {
+		if fsutil.Exists(skillsDir) {
+			entries, _ := os.ReadDir(skillsDir)
+			for _, e := range entries {
+				if e.IsDir() && strings.HasPrefix(e.Name(), "repomind-") {
+					p := filepath.Join(skillsDir, e.Name())
+					if err := os.RemoveAll(p); err == nil {
+						fmt.Printf("Removed %s\n", p)
+					}
+				}
+			}
+		}
+	}
+
+	// graphify-out/
+	graphifyDir := filepath.Join(repoRoot, "graphify-out")
+	if fsutil.Exists(graphifyDir) {
+		if err := os.RemoveAll(graphifyDir); err == nil {
+			fmt.Println("Removed graphify-out/")
+		}
+	}
+
+	// .gitattributes — remove graphify-out/* line
+	cleanGitAttributes(repoRoot)
+
+	// .git/hooks/pre-commit — remove graphify block
+	cleanPreCommitHook(repoRoot)
+
+	// CLAUDE.md — remove ## repomind section
+	cleanClaudeMd(repoRoot)
+
+	// git config — remove merge.theirs.driver
+	exec.Command("git", "config", "--unset", "merge.theirs.driver").Run()
+
+	// auto-stage removals
+	stageAll(repoRoot)
+
+	fmt.Println()
+	fmt.Println("RepoMind uninstalled.")
+	return nil
+}
+
+func cleanGitAttributes(repoRoot string) {
+	path := filepath.Join(repoRoot, ".gitattributes")
+	if !fsutil.Exists(path) {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	var kept []string
+	for _, l := range lines {
+		if strings.Contains(l, "graphify-out/* merge=theirs") {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	newContent := strings.TrimSpace(strings.Join(kept, "\n"))
+	if newContent == "" {
+		os.Remove(path)
+		fmt.Println("Removed .gitattributes (empty after cleanup)")
+		return
+	}
+	os.WriteFile(path, []byte(newContent+"\n"), 0644)
+	fmt.Println("Cleaned .gitattributes")
+}
+
+func cleanPreCommitHook(repoRoot string) {
+	path := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+	if !fsutil.Exists(path) {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	// Remove the RepoMind block (from "# RepoMind pre-commit hook" to end of "fi")
+	lines := strings.Split(content, "\n")
+	var cleaned []string
+	inBlock := false
+	for _, l := range lines {
+		if strings.Contains(l, "RepoMind pre-commit hook") {
+			inBlock = true
+			continue
+		}
+		if inBlock {
+			if strings.TrimSpace(l) == "fi" {
+				inBlock = false
+			}
+			continue
+		}
+		cleaned = append(cleaned, l)
+	}
+	newContent := strings.TrimSpace(strings.Join(cleaned, "\n"))
+	if newContent == "" || newContent == "#!/bin/sh" {
+		os.Remove(path)
+		fmt.Println("Removed pre-commit hook (empty after cleanup)")
+		return
+	}
+	os.WriteFile(path, []byte(newContent+"\n"), 0755)
+	fmt.Println("Cleaned pre-commit hook")
+}
+
+func cleanClaudeMd(repoRoot string) {
+	path := filepath.Join(repoRoot, "CLAUDE.md")
+	if !fsutil.Exists(path) {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	// Remove "## repomind" section and following content until next ## or end
+	idx := strings.Index(content, "## repomind")
+	if idx == -1 {
+		return
+	}
+	// Find end of section: next "## " after the repomind header
+	rest := content[idx+len("## repomind"):]
+	nextH2 := strings.Index(rest, "\n## ")
+	if nextH2 != -1 {
+		content = content[:idx] + rest[nextH2:]
+	} else {
+		content = content[:idx]
+	}
+	newContent := strings.TrimSpace(content)
+	if newContent == "" {
+		os.Remove(path)
+		fmt.Println("Removed CLAUDE.md (empty after cleanup)")
+		return
+	}
+	os.WriteFile(path, []byte(newContent+"\n"), 0644)
+	fmt.Println("Cleaned CLAUDE.md")
+}
