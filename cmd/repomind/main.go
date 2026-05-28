@@ -30,15 +30,17 @@ Other commands are internal and used by RepoMind skills (Claude Code / Codex).`,
 	}
 
 	if isInternal {
-		// repomind-internal mode: only internal commands, no install
+		// repomind-internal mode: internal commands + uninstall + update
 		for _, c := range cli.InternalCmds() {
 			root.AddCommand(c)
 		}
 		root.AddCommand(cli.UninstallCmd())
+		root.AddCommand(cli.UpdateCmd())
 	} else {
-		// repomind mode: install + uninstall + all internal commands
+		// repomind mode: install + uninstall + update + all internal commands
 		root.AddCommand(cli.InstallCmd())
 		root.AddCommand(cli.UninstallCmd())
+		root.AddCommand(cli.UpdateCmd())
 		for _, c := range cli.InternalCmds() {
 			root.AddCommand(c)
 		}

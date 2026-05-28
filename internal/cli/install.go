@@ -18,18 +18,22 @@ import (
 func InstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
-		Short: "Install RepoMind in the current git repository",
-		Long:  "Install RepoMind in the current git repository, creating .repomind/ with modules, graph, skills, and internal tools.",
+		Short: "Install RepoMind in the current directory",
+		Long:  "Install RepoMind in the current directory, creating .repomind/ with modules, graph, skills, and internal tools.",
 		RunE:  runInstall,
 	}
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	repoRoot, err := gitutil.GitRoot()
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cannot determine current directory: %w", err)
+	}
+	gitRoot, err := gitutil.GitRoot()
 	if err != nil {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
-	repomindDir := filepath.Join(repoRoot, ".repomind")
+	repomindDir := filepath.Join(projectRoot, ".repomind")
 
 	dirs := []string{
 		filepath.Join(repomindDir, "modules"),
@@ -65,7 +69,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// graph summary
-	summary, _ := graph.GraphScan(repoRoot, filepath.Join(repomindDir, "graph"))
+	summary, _ := graph.GraphScan(projectRoot, filepath.Join(repomindDir, "graph"))
 	if summary == nil {
 		summary = &graph.Summary{Mode: "fallback"}
 	}
@@ -74,8 +78,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// skill files
-	if err := skills.InstallSkills(repoRoot); err != nil {
+	if err := skills.InstallSkills(projectRoot); err != nil {
 		return fmt.Errorf("failed to install skills: %w", err)
+	}
+
+	// graphify-out/.gitignore — only commit graph.json and GRAPH_REPORT.md
+	if err := ensureGraphifyGitignore(projectRoot); err != nil {
+		return fmt.Errorf("graphify gitignore: %w", err)
 	}
 
 	// repomind-internal binary
@@ -83,24 +92,25 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to copy internal tool: %w", err)
 	}
 
-	// git config
-	if err := ensureGitAttributes(repoRoot); err != nil {
+	// git-level config (uses git root, not project root)
+	if err := ensureGitAttributes(gitRoot, projectRoot); err != nil {
 		return fmt.Errorf("gitattributes: %w", err)
 	}
 	if err := ensureMergeDriver(); err != nil {
 		return fmt.Errorf("merge driver: %w", err)
 	}
-	if err := ensurePreCommitHook(repoRoot); err != nil {
+	if err := ensurePreCommitHook(gitRoot); err != nil {
 		return fmt.Errorf("pre-commit hook: %w", err)
 	}
 
-	// update CLAUDE.md
-	if err := ensureClaudeMd(repoRoot); err != nil {
-		return fmt.Errorf("CLAUDE.md: %w", err)
+	// update agent instruction files so both Claude Code and Codex
+	// always read the knowledge base before editing business code.
+	if err := ensureAgentInstructions(projectRoot); err != nil {
+		return fmt.Errorf("agent instructions: %w", err)
 	}
 
 	// auto-stage everything
-	stageAll(repoRoot)
+	stageAll(gitRoot, projectRoot)
 
 	fmt.Println("RepoMind installed.")
 	fmt.Println()
@@ -124,17 +134,23 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("  .gitattributes — graphify-out/* 冲突时自动取远端")
 	fmt.Println("  pre-commit hook — 提交前 graphify --update")
 	fmt.Println()
-	fmt.Println("CLAUDE.md — 已添加 RepoMind 指令，编码前必读知识库")
+	fmt.Println("CLAUDE.md + AGENTS.md — 已添加 RepoMind 指令，编码前必读知识库")
 	fmt.Println()
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
 	return nil
 }
 
-// .gitattributes: graphify-out/* auto-accept remote on conflict
-func ensureGitAttributes(repoRoot string) error {
-	path := filepath.Join(repoRoot, ".gitattributes")
-	line := "graphify-out/* merge=theirs"
+// .gitattributes: graphify-out/* auto-accept remote on conflict.
+// gitRoot is the repository top-level; projectRoot is needed to compute
+// the relative path to graphify-out/ for the gitattributes pattern.
+func ensureGitAttributes(gitRoot, projectRoot string) error {
+	path := filepath.Join(gitRoot, ".gitattributes")
+	rel, err := filepath.Rel(gitRoot, filepath.Join(projectRoot, "graphify-out"))
+	if err != nil {
+		rel = "graphify-out"
+	}
+	line := rel + "/* merge=theirs"
 	if fsutil.Exists(path) {
 		data, _ := os.ReadFile(path)
 		if strings.Contains(string(data), line) {
@@ -156,8 +172,8 @@ func ensureMergeDriver() error {
 }
 
 // pre-commit hook: graphify --update before every commit
-func ensurePreCommitHook(repoRoot string) error {
-	hookPath := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+func ensurePreCommitHook(gitRoot string) error {
+	hookPath := filepath.Join(gitRoot, ".git", "hooks", "pre-commit")
 	hook := `#!/bin/sh
 # RepoMind pre-commit hook — 提交前增量更新图谱
 # 纯代码项目只走 AST，不调 LLM，秒级完成
@@ -185,27 +201,61 @@ fi
 	return os.WriteFile(hookPath, []byte(hook), 0755)
 }
 
-// stageAll auto-adds RepoMind-managed paths so they're tracked by git
-func stageAll(repoRoot string) {
-	paths := []string{
+// stageAll auto-adds RepoMind-managed paths so they're tracked by git.
+// gitRoot is used for repo-level files (.gitattributes); projectRoot for
+// directory-level files (.repomind, .claude, .codex, graphify-out).
+func stageAll(gitRoot, projectRoot string) {
+	// Project-level paths
+	projectPaths := []string{
 		".repomind",
 		".claude",
 		".codex",
-		".gitattributes",
 		"graphify-out",
 	}
-	for _, p := range paths {
-		abs := filepath.Join(repoRoot, p)
+	for _, p := range projectPaths {
+		abs := filepath.Join(projectRoot, p)
 		if fsutil.Exists(abs) {
-			exec.Command("git", "-C", repoRoot, "add", p).Run()
+			exec.Command("git", "-C", projectRoot, "add", p).Run()
+		}
+	}
+	// Repo-level paths
+	gitPaths := []string{".gitattributes"}
+	for _, p := range gitPaths {
+		abs := filepath.Join(gitRoot, p)
+		if fsutil.Exists(abs) {
+			exec.Command("git", "-C", gitRoot, "add", p).Run()
 		}
 	}
 }
 
-// ensureClaudeMd adds RepoMind instructions to CLAUDE.md so Claude Code
-// always reads the knowledge base before editing business code.
-func ensureClaudeMd(repoRoot string) error {
+// ensureGraphifyGitignore creates graphify-out/.gitignore so that only
+// graph.json and GRAPH_REPORT.md are committed. Internal cache files
+// (.graphify_*, cost.json, etc.) stay local.
+func ensureGraphifyGitignore(projectRoot string) error {
+	gitignore := `# Only commit the essential graph outputs.
+# Internal cache files are machine-specific and regeneratable.
+*
+!.gitignore
+!graph.json
+!GRAPH_REPORT.md
+`
+	dir := filepath.Join(projectRoot, "graphify-out")
+	if err := fsutil.EnsureDir(dir); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, ".gitignore")
+	if fsutil.Exists(path) {
+		return nil
+	}
+	return os.WriteFile(path, []byte(gitignore), 0644)
+}
+
+// ensureAgentInstructions adds RepoMind instructions to both CLAUDE.md (Claude Code)
+// and AGENTS.md (Codex) so every coding agent reads the knowledge base before editing.
+func ensureAgentInstructions(projectRoot string) error {
 	section := `
+
+<!-- repomind-start -->
 
 ## repomind
 
@@ -213,31 +263,37 @@ func ensureClaudeMd(repoRoot string) error {
 编码后执行 repomind-summary skill 更新知识库。
 
 务必在理解业务上下文后再动手修改代码，不要跳过知识库查询。
+
+<!-- repomind-end -->
 `
 
-	path := filepath.Join(repoRoot, "CLAUDE.md")
-	if fsutil.Exists(path) {
-		data, err := os.ReadFile(path)
+	for _, filename := range []string{"CLAUDE.md", "AGENTS.md"} {
+		path := filepath.Join(projectRoot, filename)
+		if fsutil.Exists(path) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(string(data), "## repomind") {
+				continue
+			}
+		}
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(data), "## repomind") {
-			return nil
+		defer f.Close()
+		if _, err := f.WriteString(section); err != nil {
+			return err
 		}
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.WriteString(section)
-	return err
+	return nil
 }
 
 func InternalInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "install",
-		Short:  "Install RepoMind in the current git repository",
+		Short:  "Install RepoMind in the current directory",
 		RunE:   runInstall,
 		Hidden: true,
 	}
@@ -246,18 +302,22 @@ func InternalInstallCmd() *cobra.Command {
 func UninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Remove RepoMind from the current git repository",
-		Long:  "Remove all RepoMind files, skills, git hooks, and configuration from the current git repository.",
+		Short: "Remove RepoMind from the current directory",
+		Long:  "Remove all RepoMind files, skills, git hooks, and configuration from the current directory.",
 		RunE:  runUninstall,
 	}
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
-	repoRoot, err := gitutil.GitRoot()
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cannot determine current directory: %w", err)
+	}
+	gitRoot, err := gitutil.GitRoot()
 	if err != nil {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
-	repomindDir := filepath.Join(repoRoot, ".repomind")
+	repomindDir := filepath.Join(projectRoot, ".repomind")
 
 	if !fsutil.Exists(repomindDir) {
 		fmt.Println("RepoMind is not installed (no .repomind/ directory found).")
@@ -278,10 +338,10 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("Removed .repomind/")
 
-	// skills
+	// skills (project-level)
 	for _, skillsDir := range []string{
-		filepath.Join(repoRoot, ".claude", "skills"),
-		filepath.Join(repoRoot, ".codex", "skills"),
+		filepath.Join(projectRoot, ".claude", "skills"),
+		filepath.Join(projectRoot, ".codex", "skills"),
 	} {
 		if fsutil.Exists(skillsDir) {
 			entries, _ := os.ReadDir(skillsDir)
@@ -296,39 +356,41 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// graphify-out/
-	graphifyDir := filepath.Join(repoRoot, "graphify-out")
+	// graphify-out/ (project-level)
+	graphifyDir := filepath.Join(projectRoot, "graphify-out")
 	if fsutil.Exists(graphifyDir) {
 		if err := os.RemoveAll(graphifyDir); err == nil {
 			fmt.Println("Removed graphify-out/")
 		}
 	}
 
-	// .gitattributes — remove graphify-out/* line
-	cleanGitAttributes(repoRoot)
+	// .gitattributes — remove graphify-out line (repo-level)
+	cleanGitAttributes(gitRoot, projectRoot)
 
-	// .git/hooks/pre-commit — remove graphify block
-	cleanPreCommitHook(repoRoot)
-
-	// CLAUDE.md — remove ## repomind section
-	cleanClaudeMd(repoRoot)
+	// .git/hooks/pre-commit — remove graphify block (repo-level)
+	cleanPreCommitHook(gitRoot)
 
 	// git config — remove merge.theirs.driver
 	exec.Command("git", "config", "--unset", "merge.theirs.driver").Run()
 
 	// auto-stage removals
-	stageAll(repoRoot)
+	stageAll(gitRoot, projectRoot)
 
 	fmt.Println()
 	fmt.Println("RepoMind uninstalled.")
 	return nil
 }
 
-func cleanGitAttributes(repoRoot string) {
-	path := filepath.Join(repoRoot, ".gitattributes")
+func cleanGitAttributes(gitRoot, projectRoot string) {
+	path := filepath.Join(gitRoot, ".gitattributes")
 	if !fsutil.Exists(path) {
 		return
 	}
+	rel, err := filepath.Rel(gitRoot, filepath.Join(projectRoot, "graphify-out"))
+	if err != nil {
+		rel = "graphify-out"
+	}
+	pattern := rel + "/* merge=theirs"
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
@@ -336,7 +398,7 @@ func cleanGitAttributes(repoRoot string) {
 	lines := strings.Split(string(data), "\n")
 	var kept []string
 	for _, l := range lines {
-		if strings.Contains(l, "graphify-out/* merge=theirs") {
+		if strings.Contains(l, pattern) {
 			continue
 		}
 		kept = append(kept, l)
@@ -351,8 +413,8 @@ func cleanGitAttributes(repoRoot string) {
 	fmt.Println("Cleaned .gitattributes")
 }
 
-func cleanPreCommitHook(repoRoot string) {
-	path := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+func cleanPreCommitHook(gitRoot string) {
+	path := filepath.Join(gitRoot, ".git", "hooks", "pre-commit")
 	if !fsutil.Exists(path) {
 		return
 	}
@@ -386,37 +448,4 @@ func cleanPreCommitHook(repoRoot string) {
 	}
 	os.WriteFile(path, []byte(newContent+"\n"), 0755)
 	fmt.Println("Cleaned pre-commit hook")
-}
-
-func cleanClaudeMd(repoRoot string) {
-	path := filepath.Join(repoRoot, "CLAUDE.md")
-	if !fsutil.Exists(path) {
-		return
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	content := string(data)
-	// Remove "## repomind" section and following content until next ## or end
-	idx := strings.Index(content, "## repomind")
-	if idx == -1 {
-		return
-	}
-	// Find end of section: next "## " after the repomind header
-	rest := content[idx+len("## repomind"):]
-	nextH2 := strings.Index(rest, "\n## ")
-	if nextH2 != -1 {
-		content = content[:idx] + rest[nextH2:]
-	} else {
-		content = content[:idx]
-	}
-	newContent := strings.TrimSpace(content)
-	if newContent == "" {
-		os.Remove(path)
-		fmt.Println("Removed CLAUDE.md (empty after cleanup)")
-		return
-	}
-	os.WriteFile(path, []byte(newContent+"\n"), 0644)
-	fmt.Println("Cleaned CLAUDE.md")
 }

@@ -14,7 +14,7 @@ func GitRoot() (string, error) {
 }
 
 func ListTrackedFiles(root string) ([]string, error) {
-	cmd := exec.Command("git", "ls-files")
+	cmd := exec.Command("git", "ls-files", "--", ".")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
