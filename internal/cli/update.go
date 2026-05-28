@@ -27,13 +27,10 @@ skills and internal tools in the current directory (if repomind is installed her
 The --from URL should point to the release directory containing binaries named
 repomind-<os>-<arch> (e.g. repomind update --from https://github.com/user/repomind/releases/download/v1.1.0).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if fromURL == "" {
-				return fmt.Errorf("--from is required (the release URL containing the binary)")
-			}
 			return runUpdate(fromURL)
 		},
 	}
-	c.Flags().StringVar(&fromURL, "from", "", "Release URL (required)")
+	c.Flags().StringVar(&fromURL, "from", "https://nemo-res.oss-ap-southeast-1.aliyuncs.com/codeai", "Release URL")
 	return c
 }
 
