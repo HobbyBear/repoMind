@@ -25,20 +25,15 @@ graphify install                      # 部署 Claude Code skill（.claude/skill
 graphify install --platform codex     # 部署 Codex skill（.codex/skills/graphify/）
 ```
 
-安装后获取绝对路径，后续步骤全部用绝对路径执行：
-
-```bash
-GRAPHIFY=$(which graphify 2>/dev/null || command -v graphify 2>/dev/null)
-echo "graphify path: $GRAPHIFY"
-```
-
 ## 步骤 2：全局重新生成图谱（非增量）
 
 这是 **全局重新生成**，不是增量更新。即使 `graphify-out/graph.json` 已存在也要重新跑，确保图谱与当前代码完全一致。
 
-> **Claude Code**：执行 `/graphify .`（/ 开头调用 skill）
+调用 graphify skill 进行全量分析：
+
+> **Claude Code**：`/graphify .`
 >
-> **Codex**：执行 `$graphify .`（$ 开头调用同名 skill）
+> **Codex**：`$graphify .`
 
 项目如果是纯代码仓库，graphify 会自动检测并**只走 AST 提取**（imports、calls、class、function），不调用 LLM，零成本。仅当检测到文档/论文时才启用语义提取。输出在 `graphify-out/` 目录。
 
