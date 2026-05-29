@@ -25,8 +25,9 @@ It is not a traditional CLI. The only command users need is:
   repomind install
 
 Other commands are internal and used by RepoMind skills (Claude Code / Codex).`,
-		SilenceUsage:  true,
-		SilenceErrors: true,
+		SilenceUsage:      true,
+		SilenceErrors:     true,
+		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
 
 	if isInternal {

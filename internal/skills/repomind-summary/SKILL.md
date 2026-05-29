@@ -7,6 +7,8 @@ description: 编码后总结。增量更新 graphify AST、分析业务影响范
 
 每次完成代码修改后，必须执行以下步骤，确保 RepoMind 知识库与代码保持同步。
 
+> **重要**：以下 4 个步骤（2-5）必须全部完成，不可在 `/graphify --update` 后停止。
+
 ## 步骤 1：增量更新图谱
 
 先更新 graphify 的 AST 数据，只重提取变更文件：
@@ -17,12 +19,16 @@ description: 编码后总结。增量更新 graphify AST、分析业务影响范
 
 纯代码项目只走 AST（imports、calls、class、function），不调用 LLM，秒级完成。
 
+`/graphify --update` 完成后，**继续执行步骤 2**。
+
 ## 步骤 2：查看改动
 
 ```bash
-git diff --stat
-git diff --name-only
+git diff HEAD --stat
+git diff HEAD --name-only
 ```
+
+使用 `git diff HEAD` 而非 `git diff`，确保覆盖已暂存（git add）和未暂存的所有改动，避免遗漏。
 
 确认本次修改涉及的所有文件。
 
@@ -44,6 +50,7 @@ git diff --name-only
 - 新增业务入口 → 添加到「关键代码」，大文件（函数 > 3 个）需列出关键函数名
 - 新增修改场景 → 更新「常见修改场景」，建议精确到函数名（如 `file.ts` 中的 `specificFunc()`）
 - 新增业务模块 → 创建新的 `modules/<模块名>.md`
+- 拆函数导致函数名变化 → 更新「关键代码」中的函数名列表
 
 **关键代码粒度规则（同 repomind-init）：**
 - 小文件（函数 ≤ 3 个）：列出文件路径和用途即可
@@ -57,8 +64,7 @@ git diff --name-only
 - 某函数被删除 → 从「关键代码」对应文件的函数列表中移除
 
 **不需要更新：**
-- 格式化、变量重命名、简单重构
-- 拆函数但不改变业务行为（新增的函数名应添加到关键代码列表中）
+- 格式化、变量重命名、简单重构（不改变业务行为和函数名）
 - 配置调整（非业务逻辑）
 
 ### 4b：同步更新 `.repomind/index.json`

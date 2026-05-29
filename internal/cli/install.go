@@ -134,7 +134,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("  .gitattributes — graphify-out/* 冲突时自动取远端")
 	fmt.Println("  pre-commit hook — 提交前 graphify --update")
 	fmt.Println()
-	fmt.Println("CLAUDE.md + AGENTS.md — 已添加 RepoMind 指令，编码前必读知识库")
+	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
+	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
 	fmt.Println()
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
@@ -250,44 +251,51 @@ func ensureGraphifyGitignore(projectRoot string) error {
 	return os.WriteFile(path, []byte(gitignore), 0644)
 }
 
-// ensureAgentInstructions adds RepoMind instructions to both CLAUDE.md (Claude Code)
-// and AGENTS.md (Codex) so every coding agent reads the knowledge base before editing.
+// ensureAgentInstructions adds RepoMind instructions so every coding agent
+// reads the knowledge base before editing business code.
+//
+// Claude Code: uses .claude/rules/repomind.md (cleanly separated, no conflicts
+// with other plugins).  Codex: appends to AGENTS.md (Codex does not have a
+// rules directory equivalent).
 func ensureAgentInstructions(projectRoot string) error {
-	section := `
-
-<!-- repomind-start -->
-
-## repomind
+	content := `# RepoMind
 
 编辑业务代码前，先执行 repomind-query skill 查找相关模块。
 编码后执行 repomind-summary skill 更新知识库。
 
 务必在理解业务上下文后再动手修改代码，不要跳过知识库查询。
-
-<!-- repomind-end -->
 `
 
-	for _, filename := range []string{"CLAUDE.md", "AGENTS.md"} {
-		path := filepath.Join(projectRoot, filename)
-		if fsutil.Exists(path) {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			if strings.Contains(string(data), "## repomind") {
-				continue
-			}
-		}
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if _, err := f.WriteString(section); err != nil {
+	// --- Claude Code: .claude/rules/repomind.md ---
+	rulesDir := filepath.Join(projectRoot, ".claude", "rules")
+	if err := fsutil.EnsureDir(rulesDir); err != nil {
+		return err
+	}
+	rulesPath := filepath.Join(rulesDir, "repomind.md")
+	if !fsutil.Exists(rulesPath) {
+		if err := os.WriteFile(rulesPath, []byte(content), 0644); err != nil {
 			return err
 		}
 	}
-	return nil
+
+	// --- Codex: AGENTS.md (append) ---
+	agentsPath := filepath.Join(projectRoot, "AGENTS.md")
+	if fsutil.Exists(agentsPath) {
+		data, err := os.ReadFile(agentsPath)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(data), "repomind-query") {
+			return nil
+		}
+	}
+	f, err := os.OpenFile(agentsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "\n\n<!-- repomind-start -->\n\n%s\n\n<!-- repomind-end -->\n", strings.TrimSpace(content))
+	return err
 }
 
 func InternalInstallCmd() *cobra.Command {
@@ -366,6 +374,18 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	// .gitattributes — remove graphify-out line (repo-level)
 	cleanGitAttributes(gitRoot, projectRoot)
+
+	// .claude/rules/repomind.md
+	repomindRule := filepath.Join(projectRoot, ".claude", "rules", "repomind.md")
+	if fsutil.Exists(repomindRule) {
+		if err := os.Remove(repomindRule); err == nil {
+			fmt.Println("Removed .claude/rules/repomind.md")
+		}
+	}
+
+	// CLAUDE.md + AGENTS.md — remove old repomind block (legacy installs)
+	cleanRepomindSection(filepath.Join(projectRoot, "CLAUDE.md"))
+	cleanRepomindSection(filepath.Join(projectRoot, "AGENTS.md"))
 
 	// .git/hooks/pre-commit — remove graphify block (repo-level)
 	cleanPreCommitHook(gitRoot)
@@ -448,4 +468,34 @@ func cleanPreCommitHook(gitRoot string) {
 	}
 	os.WriteFile(path, []byte(newContent+"\n"), 0755)
 	fmt.Println("Cleaned pre-commit hook")
+}
+
+// cleanRepomindSection removes the <!-- repomind-start -->...<!-- repomind-end -->
+// block from CLAUDE.md / AGENTS.md. Used to clean up legacy installs.
+func cleanRepomindSection(path string) {
+	if !fsutil.Exists(path) {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	start := strings.Index(content, "<!-- repomind-start -->")
+	if start == -1 {
+		return
+	}
+	end := strings.Index(content, "<!-- repomind-end -->")
+	if end == -1 {
+		return
+	}
+	end += len("<!-- repomind-end -->")
+	cleaned := strings.TrimSpace(content[:start] + content[end:])
+	if cleaned == "" {
+		os.Remove(path)
+		fmt.Printf("Removed %s (empty after cleanup)\n", filepath.Base(path))
+		return
+	}
+	os.WriteFile(path, []byte(cleaned+"\n"), 0644)
+	fmt.Printf("Cleaned %s\n", filepath.Base(path))
 }
