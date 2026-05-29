@@ -275,7 +275,7 @@ func ensureRepomindGitignore(projectRoot string) error {
 func ensureAgentInstructions(projectRoot string) error {
 	content := `# RepoMind
 
-编辑业务代码前，先执行 repomind-query skill 查找相关模块。
+编辑业务代码或者进行需求分析前，必须先先执行 repomind-query skill 查找相关模块。
 编码后执行 repomind-summary skill 更新知识库。
 
 务必在理解业务上下文后再动手修改代码，不要跳过知识库查询。
