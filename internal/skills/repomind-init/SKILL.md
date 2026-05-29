@@ -29,11 +29,12 @@ graphify install --platform codex     # 部署 Codex skill（.codex/skills/graph
 
 这是 **全局重新生成**，不是增量更新。即使 `graphify-out/graph.json` 已存在也要重新跑，确保图谱与当前代码完全一致。
 
-调用 graphify skill 进行全量分析：
+调用 graphify **skill**（注意：不是 shell 命令，不要按 bash 方式执行）进行全量分析：
 
-> **Claude Code**：`/graphify .`
->
-> **Codex**：`$graphify .`
+- **如果你在 Claude Code 中**：输入 `/graphify .`（以 `/` 开头 = 调用 Claude Code skill）
+- **如果你在 Codex 中**：输入 `$graphify .`（以 `$` 开头 = 调用 Codex skill）
+
+> ⚠️ 这不是 shell 命令！不要在 bash/zsh 终端里运行 `/graphify .` 或 `$graphify .`。这些是 AI 编码助手内部的 skill 调用语法。
 
 项目如果是纯代码仓库，graphify 会自动检测并**只走 AST 提取**（imports、calls、class、function），不调用 LLM，零成本。仅当检测到文档/论文时才启用语义提取。输出在 `graphify-out/` 目录。
 

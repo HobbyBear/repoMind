@@ -11,11 +11,12 @@ description: 编码后总结。增量更新 graphify AST、分析业务影响范
 
 ## 步骤 1：增量更新图谱
 
-调用 graphify skill 增量更新 AST（只重提取变更文件）：
+**调用 graphify skill**（不是 shell 命令，不要在终端里执行）增量更新 AST：
 
-> **Claude Code**：`/graphify --update`
->
-> **Codex**：`$graphify --update`
+- **如果你在 Claude Code 中**：输入 `/graphify --update`（以 `/` 开头表示调用 skill）
+- **如果你在 Codex 中**：输入 `$graphify --update`（以 `$` 开头表示调用 skill）
+
+> ⚠️ 这不是 bash/zsh 命令，不要在终端 shell 里运行。这是 AI 编码助手的 skill 调用语法。
 
 纯代码项目只走 AST（imports、calls、class、function），不调用 LLM，秒级完成。
 
