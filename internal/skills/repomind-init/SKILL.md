@@ -1,49 +1,50 @@
 ---
 name: repomind-init
-description: 初始化业务知识库。使用 /graphify 分析代码依赖关系，从零构建 .repomind/modules/*.md 和 .repomind/index.json。
+description: 初始化业务知识库。使用 graphify 全局分析代码依赖关系，从零构建 .repomind/modules/*.md 和 .repomind/index.json。Claude Code 通过 /graphify 触发，Codex 通过 $graphify 触发。
 ---
 
 # RepoMind 初始化知识库
 
 当 `.repomind/index.json` 的 `modules` 数组为空，或 `.repomind/modules/` 下除 README.md 外无模块文档时，执行初始化。
 
-> **重要**：以下 8 个步骤必须全部完成，缺一不可。graphify 安装和运行只是前置准备，步骤 5-8（浏览仓库、归纳模块、创建文档、输出摘要）才是初始化的核心产出。
+> **重要**：以下 8 个步骤必须全部完成，缺一不可。初始化是**全局重新生成**，不是增量更新，每次都会从头构建知识库。graphify 安装和运行是前置准备，步骤 5-8（浏览仓库、归纳模块、创建文档、输出摘要）才是核心产出。
 
 ## 步骤 1：检查并安装 graphify
 
-先检查 graphify 是否已安装：
+先检查 graphify CLI 是否已安装：
 
 ```bash
-which graphify || command -v graphify
+which graphify 2>/dev/null || command -v graphify 2>/dev/null
 ```
 
 如果不存在，执行安装并部署 skill：
 
 ```bash
 pip install graphifyy
-graphify install               # 安装 Claude Code skill
-graphify install --platform codex  # 安装 Codex skill
+graphify install                      # 部署 Claude Code skill（.claude/skills/graphify/）
+graphify install --platform codex     # 部署 Codex skill（.codex/skills/graphify/）
 ```
 
-安装后验证：
+安装后获取绝对路径，后续步骤全部用绝对路径执行：
 
 ```bash
-graphify --help
+GRAPHIFY=$(which graphify 2>/dev/null || command -v graphify 2>/dev/null)
+echo "graphify path: $GRAPHIFY"
 ```
 
-## 步骤 2：运行 /graphify
+## 步骤 2：全局重新生成图谱（非增量）
 
-如果 `graphify-out/graph.json` 不存在（首次使用），运行：
+这是 **全局重新生成**，不是增量更新。即使 `graphify-out/graph.json` 已存在也要重新跑，确保图谱与当前代码完全一致。
 
-```
-/graphify .
-```
+> **Claude Code**：执行 `/graphify .`（/ 开头调用 skill）
+>
+> **Codex**：执行 `$graphify .`（$ 开头调用同名 skill）
 
 项目如果是纯代码仓库，graphify 会自动检测并**只走 AST 提取**（imports、calls、class、function），不调用 LLM，零成本。仅当检测到文档/论文时才启用语义提取。输出在 `graphify-out/` 目录。
 
 **graphify 是 RepoMind 的代码结构分析引擎**，提供文件间的依赖关系、社区聚类、入口节点等信息。RepoMind 在此之上做业务模块归纳。
 
-`/graphify` 完成后，**继续执行步骤 3**，不要在此停止。
+完成后，**继续执行步骤 3**，不要在此停止。
 
 ## 步骤 3：确保 graphify 核心文件被 git 跟踪
 
@@ -122,7 +123,7 @@ git ls-files
 
 ## 步骤 7：创建模块文档和索引
 
-### 6a：创建 `.repomind/modules/<模块名>.md`
+### 7a：创建 `.repomind/modules/<模块名>.md`
 
 ```md
 # 模块名称
@@ -156,7 +157,7 @@ git ls-files
 - **判断依据**：参考 `summary.json` 的 `symbols` 字段，按 file 聚合即可得到每个文件的函数数量
 - 函数名包含方法接收者（如 `*Service.CreateOrder`），便于区分同名方法
 
-### 6b：创建 `.repomind/index.json`
+### 7b：创建 `.repomind/index.json`
 
 ```json
 {
@@ -175,7 +176,7 @@ git ls-files
 - `description`：一句话业务描述（中文）
 - `keywords`：中英文关键词数组，用于快速搜索定位
 
-### 6c：git add 知识库文件
+### 7c：git add 知识库文件
 
 将创建的模块文档和索引加入 git 版本控制：
 

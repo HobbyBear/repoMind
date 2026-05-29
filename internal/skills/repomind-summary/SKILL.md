@@ -7,19 +7,33 @@ description: 编码后总结。增量更新 graphify AST、分析业务影响范
 
 每次完成代码修改后，必须执行以下步骤，确保 RepoMind 知识库与代码保持同步。
 
-> **重要**：以下 4 个步骤（2-5）必须全部完成，不可在 `/graphify --update` 后停止。
+> **重要**：以下 4 个步骤（2-5）必须全部完成，不可在 graphify 增量更新后停止。
 
 ## 步骤 1：增量更新图谱
 
-先更新 graphify 的 AST 数据，只重提取变更文件：
+先用绝对路径找到 graphify，再增量更新 AST：
 
+```bash
+GRAPHIFY=$(which graphify 2>/dev/null || command -v graphify 2>/dev/null)
+if [ -z "$GRAPHIFY" ]; then
+    echo "graphify not found, run: pip install graphifyy"
+    exit 1
+fi
 ```
-/graphify --update
+
+然后执行增量更新（只重提取变更文件）：
+
+> **Claude Code**：在终端执行 `$GRAPHIFY --update`（注意 Claude Code 中调用 skill 用 `/`，但这里执行的是 CLI 命令，不是 skill）
+>
+> **Codex**：在终端执行 `$GRAPHIFY --update`
+
+```bash
+$GRAPHIFY --update
 ```
 
 纯代码项目只走 AST（imports、calls、class、function），不调用 LLM，秒级完成。
 
-`/graphify --update` 完成后，**继续执行步骤 2**。
+完成后**继续执行步骤 2**。
 
 ## 步骤 2：查看改动
 
