@@ -14,6 +14,7 @@ import (
 func InternalCmds() []*cobra.Command {
 	return []*cobra.Command{
 		graphScanCmd(),
+		syncProjectCmd(),
 	}
 }
 
@@ -41,6 +42,22 @@ func graphScanCmd() *cobra.Command {
 			}
 			fmt.Printf("Graph scan complete. Mode: %s, Module candidates: %d\n", summary.Mode, len(summary.ModuleCandidates))
 			return nil
+		},
+	}
+}
+
+func syncProjectCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "sync-project",
+		Short:  "Sync skills, rules, and tools into the current project (internal)",
+		Long:   "Refresh embedded skills, agent instructions, gitignore files, and internal binary.\n\nThis is an internal command used by repomind update.",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectRoot, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("cannot determine current directory: %w", err)
+			}
+			return syncProject(projectRoot)
 		},
 	}
 }

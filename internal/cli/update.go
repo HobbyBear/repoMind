@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -85,13 +86,16 @@ func runUpdate(fromURL string) error {
 
 	fmt.Printf("Updated: %s\n", exePath)
 
-	// If current directory has repomind installed, refresh skills + tools.
-	// The new binary (which we just replaced the old one with) embeds the
-	// latest skill files, so this syncs them into the project.
+	// Sync project using the NEW binary, not the old running process.
+	// The old process still has the old embedded skills — only the new binary
+	// on disk contains the latest skill files.
 	projectRoot, _ := os.Getwd()
 	if fsutil.Exists(filepath.Join(projectRoot, ".repomind")) {
-		if err := syncProject(projectRoot); err != nil {
-			fmt.Printf("Skills refresh skipped: %v (re-run in project dir)\n", err)
+		cmd := exec.Command(exePath, "sync-project")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("Skills refresh failed: %v (run 'repomind update' again)\n", err)
 		}
 	} else {
 		fmt.Println("Run 'repomind install' or re-run 'repomind update' in your project directories to refresh skills.")
