@@ -282,15 +282,13 @@ func ensureAgentInstructions(projectRoot string) error {
 `
 
 	// --- Claude Code: .claude/rules/repomind.md ---
+	// Always overwrite — this file is fully managed by RepoMind.
 	rulesDir := filepath.Join(projectRoot, ".claude", "rules")
 	if err := fsutil.EnsureDir(rulesDir); err != nil {
 		return err
 	}
-	rulesPath := filepath.Join(rulesDir, "repomind.md")
-	if !fsutil.Exists(rulesPath) {
-		if err := os.WriteFile(rulesPath, []byte(content), 0644); err != nil {
-			return err
-		}
+	if err := os.WriteFile(filepath.Join(rulesDir, "repomind.md"), []byte(content), 0644); err != nil {
+		return err
 	}
 
 	// --- Codex: AGENTS.md (append) ---

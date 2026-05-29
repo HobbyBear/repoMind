@@ -122,6 +122,11 @@ func syncProject(projectRoot string) error {
 		return fmt.Errorf("graphify gitignore: %w", err)
 	}
 
+	// refresh agent instructions (.claude/rules/repomind.md + AGENTS.md)
+	if err := ensureAgentInstructions(projectRoot); err != nil {
+		return fmt.Errorf("agent instructions: %w", err)
+	}
+
 	gitRoot, _ := gitutil.GitRoot()
 	stageAll(gitRoot, projectRoot)
 
