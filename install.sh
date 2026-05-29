@@ -5,7 +5,7 @@ set -e
 # RepoMind 一键安装脚本
 # Usage: ./install.sh [release-url]
 #
-# 默认从 OSS 下载最新版本，也支持自定义 URL。
+# 默认从 GitHub Releases 下载最新版本，也支持自定义 URL。
 #
 # 脚本会自动:
 #   1. 检测 Linux / macOS + amd64 / arm64
@@ -14,7 +14,7 @@ set -e
 #   4. 自动配置 PATH，立即可用
 # ============================================================
 
-RELEASE_URL="${1:-https://nemo-res.oss-ap-southeast-1.aliyuncs.com/codeai}"
+RELEASE_URL="${1:-https://github.com/HobbyBear/repoMind/releases/latest/download}"
 
 # Remove trailing slash
 RELEASE_URL="${RELEASE_URL%/}"

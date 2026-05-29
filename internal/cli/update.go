@@ -25,12 +25,12 @@ func UpdateCmd() *cobra.Command {
 skills and internal tools in the current directory (if repomind is installed here).
 
 The --from URL should point to the release directory containing binaries named
-repomind-<os>-<arch> (e.g. repomind update --from https://nemo-res.oss-ap-southeast-1.aliyuncs.com/codeai).`,
+repomind-<os>-<arch> (e.g. repomind update --from https://github.com/owner/repo/releases/latest/download).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdate(fromURL)
 		},
 	}
-	c.Flags().StringVar(&fromURL, "from", "https://nemo-res.oss-ap-southeast-1.aliyuncs.com/codeai", "Release URL")
+	c.Flags().StringVar(&fromURL, "from", "https://github.com/HobbyBear/repoMind/releases/latest/download", "Release URL")
 	return c
 }
 
