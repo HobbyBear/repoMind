@@ -82,7 +82,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to install skills: %w", err)
 	}
 
-	// graphify-out/.gitignore — only commit graph.json and GRAPH_REPORT.md
+	// .repomind/.gitignore — ensure key files are tracked
+	if err := ensureRepomindGitignore(projectRoot); err != nil {
+		return fmt.Errorf("repomind gitignore: %w", err)
+	}
+
+	// graphify-out/.gitignore — only commit essential outputs
 	if err := ensureGraphifyGitignore(projectRoot); err != nil {
 		return fmt.Errorf("graphify gitignore: %w", err)
 	}
@@ -230,8 +235,8 @@ func stageAll(gitRoot, projectRoot string) {
 }
 
 // ensureGraphifyGitignore creates graphify-out/.gitignore so that only
-// graph.json and GRAPH_REPORT.md are committed. Internal cache files
-// (.graphify_*, cost.json, etc.) stay local.
+// essential outputs are committed. Internal cache files (.graphify_*,
+// cost.json, etc.) stay local.
 func ensureGraphifyGitignore(projectRoot string) error {
 	gitignore := `# Only commit the essential graph outputs.
 # Internal cache files are machine-specific and regeneratable.
@@ -239,16 +244,26 @@ func ensureGraphifyGitignore(projectRoot string) error {
 !.gitignore
 !graph.json
 !GRAPH_REPORT.md
+!manifest.json
+!graph.html
+!.vocab.txt
 `
 	dir := filepath.Join(projectRoot, "graphify-out")
 	if err := fsutil.EnsureDir(dir); err != nil {
 		return err
 	}
-	path := filepath.Join(dir, ".gitignore")
-	if fsutil.Exists(path) {
-		return nil
-	}
-	return os.WriteFile(path, []byte(gitignore), 0644)
+	return os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gitignore), 0644)
+}
+
+// ensureRepomindGitignore creates .repomind/.gitignore so that key knowledge
+// base files are guaranteed to be tracked by git.
+func ensureRepomindGitignore(projectRoot string) error {
+	gitignore := `# RepoMind 知识库文件 —— 必须被 git 跟踪
+!index.json
+!modules/**
+!bin/repomind-internal
+`
+	return os.WriteFile(filepath.Join(projectRoot, ".repomind", ".gitignore"), []byte(gitignore), 0644)
 }
 
 // ensureAgentInstructions adds RepoMind instructions so every coding agent

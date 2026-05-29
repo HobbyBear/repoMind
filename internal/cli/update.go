@@ -115,8 +115,11 @@ func syncProject(projectRoot string) error {
 	}
 	fmt.Println("Refreshed internal binary")
 
+	if err := ensureRepomindGitignore(projectRoot); err != nil {
+		return fmt.Errorf("repomind gitignore: %w", err)
+	}
 	if err := ensureGraphifyGitignore(projectRoot); err != nil {
-		return fmt.Errorf("gitignore: %w", err)
+		return fmt.Errorf("graphify gitignore: %w", err)
 	}
 
 	gitRoot, _ := gitutil.GitRoot()
