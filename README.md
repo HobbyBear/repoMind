@@ -2,6 +2,8 @@
 
 为 Claude Code / Codex 编码助手提供业务代码知识库。AI 在修改代码前自动查询相关业务模块、理解上下文，编码后自动更新知识库，确保每次改动都有据可查。
 
+![img.png](img.png)
+
 ## 安装
 
 ```bash
@@ -43,3 +45,36 @@ repomind install      # 初始化知识库
 repomind uninstall    # 移除
 repomind update       # 更新到最新版本
 ```
+
+## 解决的问题
+
+Graphify — 代码结构分析引擎
+
+扫描源码 AST，提取文件间的依赖关系、调用链、社区聚类，生成 graphify-out/graph.json。它只回答一个问题："代码在技术上是怎样组织的？"
+
+- 输入：源码目录
+- 输出：节点图（文件、函数、imports、calls）+ 社区发现
+- 纯 AST 提取，不调用 LLM
+
+RepoMind — 业务知识库
+
+在 Graphify 之上加了一层业务语义。把 graphify 的原始结构数据转化为 AI 编码助手能直接消费的业务文档。它回答："这个模块是干什么的？改它要注意什么？"
+
+- 输入：graphify 的图谱 + 开发者对业务的理解
+- 输出：.repomind/modules/*.md（业务描述、关键代码、修改场景、注意事项）+ index.json（关键词索引，快速定位）
+
+### Graphify vs RepoMind
+
+| 维度 | Graphify | RepoMind |
+|------|----------|----------|
+| 定位 | 代码结构分析引擎 | 业务知识库 |
+| 输入 | 源码目录 | Graphify 图谱 + 开发者业务理解 |
+| 输出 | graphify-out/graph.json（节点图 + 社区发现） | .repomind/modules/*.md + index.json（关键词索引） |
+| 回答的问题 | 代码在技术上是怎样组织的？ | 这个模块是干什么的？改它要注意什么？ |
+| 更新方式 | graphify CLI 手动运行 | AI skill 编码前后自动更新 |
+| 类比 | 建筑的结构图纸（承重墙在哪、管道怎么走） | 房间功能说明（这是厨房、插座在这里、注意地面防水） |
+
+### 为什么两个都要
+
+Graphify 只解决了"代码长什么样"，但 AI 改代码前需要知道的是"这笔退款逻辑在 payment/refund.go 的 doRefund() 里，改的时候注意幂等性"。这些业务知识是 AST 提取不出来的，需要 RepoMind 来沉淀。每次编码后 RepoMind 更新模块文档，下次编码前就能直接查到，形成闭环。
+
