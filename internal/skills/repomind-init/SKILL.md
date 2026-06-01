@@ -7,25 +7,9 @@ description: 初始化业务知识库。使用 graphify 全局分析代码依赖
 
 当 `.repomind/index.json` 的 `modules` 数组为空，或 `.repomind/modules/` 下除 README.md 外无模块文档时，执行初始化。
 
-> **重要**：以下 8 个步骤必须全部完成，缺一不可。初始化是**全局重新生成**，不是增量更新，每次都会从头构建知识库。graphify 安装和运行是前置准备，步骤 5-8（浏览仓库、归纳模块、创建文档、输出摘要）才是核心产出。
+> **重要**：以下 7 个步骤必须全部完成，缺一不可。初始化是**全局重新生成**，不是增量更新，每次都会从头构建知识库。graphify 已由 `repomind install` 预先安装，可直接使用。
 
-## 步骤 1：检查并安装 graphify
-
-先检查 graphify CLI 是否已安装：
-
-```bash
-which graphify 2>/dev/null || command -v graphify 2>/dev/null
-```
-
-如果不存在，执行安装并部署 skill：
-
-```bash
-pip install graphifyy
-graphify install                      # 部署 Claude Code skill（.claude/skills/graphify/）
-graphify install --platform codex     # 部署 Codex skill（.codex/skills/graphify/）
-```
-
-## 步骤 2：全局重新生成图谱（非增量）
+## 步骤 1：全局重新生成图谱（非增量）
 
 这是 **全局重新生成**，不是增量更新。即使 `graphify-out/graph.json` 已存在也要重新跑，确保图谱与当前代码完全一致。
 
@@ -42,7 +26,7 @@ graphify install --platform codex     # 部署 Codex skill（.codex/skills/graph
 
 完成后，**继续执行步骤 3**，不要在此停止。
 
-## 步骤 3：确保 graphify 核心文件被 git 跟踪
+## 步骤 2：确保 graphify 核心文件被 git 跟踪
 
 `graphify-out/` 下的 `.gitignore` 默认忽略所有文件，需要确认以下文件被 `!` 规则排除跟踪：
 
@@ -78,7 +62,7 @@ EOF
 git add graphify-out/ .repomind/
 ```
 
-## 步骤 4：运行 graph-scan
+## 步骤 3：运行 graph-scan
 
 ```bash
 .repomind/bin/repomind-internal graph-scan
@@ -91,7 +75,7 @@ git add graphify-out/ .repomind/
 - `communities`：graphify 社区发现结果（如有）
 - `symbols`：函数/方法级符号列表（name、file、pkg），用于判断文件粒度
 
-## 步骤 5：浏览仓库结构
+## 步骤 4：浏览仓库结构
 
 ```bash
 git ls-files
@@ -103,7 +87,7 @@ git ls-files
 - 各目录下的文件组织
 - 入口文件与 graphify 社区（community）的对应关系
 
-## 步骤 6：归纳业务模块
+## 步骤 5：归纳业务模块
 
 根据以下信息综合判断业务模块：
 
@@ -117,9 +101,9 @@ git ls-files
 - 在代码中体现为一个或多个目录
 - 有明确的入口文件
 
-## 步骤 7：创建模块文档和索引
+## 步骤 6：创建模块文档和索引
 
-### 7a：创建 `.repomind/modules/<模块名>.md`
+### 6a：创建 `.repomind/modules/<模块名>.md`
 
 ```md
 # 模块名称
@@ -153,7 +137,7 @@ git ls-files
 - **判断依据**：参考 `summary.json` 的 `symbols` 字段，按 file 聚合即可得到每个文件的函数数量
 - 函数名包含方法接收者（如 `*Service.CreateOrder`），便于区分同名方法
 
-### 7b：创建 `.repomind/index.json`
+### 6b：创建 `.repomind/index.json`
 
 ```json
 {
@@ -172,7 +156,7 @@ git ls-files
 - `description`：一句话业务描述（中文）
 - `keywords`：中英文关键词数组，用于快速搜索定位
 
-### 7c：git add 知识库文件
+### 6c：git add 知识库文件
 
 将创建的模块文档和索引加入 git 版本控制：
 
@@ -182,7 +166,7 @@ git add .repomind/modules/ .repomind/index.json
 
 这确保 RepoMind 知识库随代码一起提交，团队共享。
 
-## 步骤 8：输出初始化摘要
+## 步骤 7：输出初始化摘要
 
 ```markdown
 ## RepoMind 初始化完成

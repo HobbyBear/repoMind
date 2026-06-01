@@ -77,6 +77,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// graphify CLI + skill deployment
+	ensureGraphifyCLI()
+
 	// skill files
 	if err := skills.InstallSkills(projectRoot); err != nil {
 		return fmt.Errorf("failed to install skills: %w", err)
@@ -512,4 +515,29 @@ func cleanRepomindSection(path string) {
 	}
 	os.WriteFile(path, []byte(cleaned+"\n"), 0644)
 	fmt.Printf("Cleaned %s\n", filepath.Base(path))
+}
+
+// ensureGraphifyCLI checks for graphify, installs via pip if missing, and
+// deploys graphify skills to both Claude Code and Codex directories.
+func ensureGraphifyCLI() {
+	_, err := exec.LookPath("graphify")
+	if err != nil {
+		fmt.Println("graphify not found, installing via pip...")
+		pip := "pip3"
+		if _, e := exec.LookPath("pip3"); e != nil {
+			pip = "pip"
+		}
+		c := exec.Command(pip, "install", "graphifyy")
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		if e := c.Run(); e != nil {
+			fmt.Println("Warning: graphify installation skipped (pip install failed)")
+			return
+		}
+	}
+
+	fmt.Println("Deploying graphify skills...")
+	exec.Command("graphify", "install").Run()
+	exec.Command("graphify", "install", "--platform", "codex").Run()
+	fmt.Println("graphify ready.")
 }
