@@ -276,13 +276,31 @@ func ensureRepomindGitignore(projectRoot string) error {
 // with other plugins).  Codex: appends to AGENTS.md (Codex does not have a
 // rules directory equivalent).
 func ensureAgentInstructions(projectRoot string) error {
-	content := `# RepoMind
+	content := `# RepoMind — 代码问答与编码的优先知识库
 
-编辑业务代码或者进行需求分析前，必须先执行 repomind-query skill 查找相关模块。
-编码后执行 repomind-summary skill 更新知识库。
-排查 bug 时也应先执行 repomind-query skill，理解相关业务上下文后再定位问题。
+	## 核心原则
+	**任何涉及代码、业务逻辑、项目结构的问题，都必须先查 RepoMind 知识库再回答。**
+	回答后如有新发现，自动更新知识库。
 
-务必在理解业务上下文后再动手修改代码，不要跳过知识库查询。
+	## 自动触发规则
+
+	### 当你问代码/业务问题时
+	1. 我**自动调用 `repomind-query`** 查询知识库
+	2. 找到相关模块文档和代码位置后回答
+	3. 如果有新发现（知识库没记录到的内容），写入 `.repomind/.query-findings.json`
+	4. 回答后**自动调用 `repomind-summary`** 更新知识库
+
+	### 编辑/修改代码前
+	1. 必须先执行 `repomind-query` skill 查找相关模块
+	2. 理解业务上下文后再动手
+
+	### 编码完成后
+	1. 必须执行 `repomind-summary` skill 更新知识库
+	2. 包括 graphify 增量更新、模块文档更新、index.json 同步
+
+	### 排查 Bug 时
+	1. 先执行 `repomind-query` skill 理解相关业务上下文
+	2. 再定位问题
 `
 
 	// --- Claude Code: .claude/rules/repomind.md ---
