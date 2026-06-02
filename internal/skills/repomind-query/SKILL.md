@@ -63,7 +63,11 @@ description: 查阅任何代码/业务逻辑时优先自动触发，查询 RepoM
 
 ## 步骤 6：保存查询发现
 
-将本次查询中**超出已有知识库的新发现**（新接口、新逻辑、新代码位置、模块边界更新）写入临时文件，供后续 repomind-summary 自动更新知识库：
+将本次查询中**超出已有知识库的新发现**（新接口、新逻辑、新代码位置、模块边界更新）写入临时文件，自动触发后续知识库更新：
+
+**自动判定规则：**
+- `new_findings` 数组**不为空** → `needs_summary: true`（有新知识需要同步）
+- `new_findings` 数组**为空**（所有信息已在模块文档中）→ `needs_summary: false`
 
 ```bash
 cat > .repomind/.query-findings.json << 'JSONEOF'
@@ -84,4 +88,15 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
 JSONEOF
 ```
 
-> 如果本次查询没有新发现（所有信息已在模块文档中），`needs_summary` 设为 `false`。
+> `needs_summary` **必须**根据 `new_findings` 数组是否为空自动判定，不要手动预设 `false`。
+> 即使发现信息和已有知识库部分重叠，只要有任何一条全新信息，就设为 `true`。
+
+## 步骤 7：自动更新知识库
+
+如果 `needs_summary == true`（即 new_findings 不为空），**自动调用 repomind-summary skill** 完成知识库更新，无需等待用户指令：
+
+```
+Skill: repomind-summary
+```
+
+> 这样确保 "查询 → 发现 → 存储" 全流程闭环，新知识不会因为忘记执行总结而被遗漏。

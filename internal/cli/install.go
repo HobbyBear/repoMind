@@ -288,9 +288,8 @@ func ensureAgentInstructions(projectRoot string) error {
 
 	### 当你问代码/业务问题时
 	1. 我**自动调用 ` + bt + `repomind-query` + bt + `** 查询知识库
-	2. 找到相关模块文档和代码位置后回答
-	3. 如果有新发现（知识库没记录到的内容），写入 ` + bt + `.repomind/.query-findings.json` + bt + `
-	4. 回答后**自动调用 ` + bt + `repomind-summary` + bt + `** 更新知识库
+	2. ` + bt + `repomind-query` + bt + ` 内部自动完成全流程：查知识库 → 找代码 → 保存发现 → 如有新知识自动调用 ` + bt + `repomind-summary` + bt + ` 更新知识库
+	3. 回到主流程后回答用户
 
 	### 编辑/修改代码前
 	1. 必须先执行 ` + bt + `repomind-query` + bt + ` skill 查找相关模块
