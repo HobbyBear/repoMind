@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 func EnsureDir(path string) error {
@@ -18,6 +20,11 @@ func WriteFile(path, content string) error {
 }
 
 func CopyExecutable(dst string) error {
+	// On Windows the internal binary must have .exe extension
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(dst), ".exe") {
+		dst += ".exe"
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return err

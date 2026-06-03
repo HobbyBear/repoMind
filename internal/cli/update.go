@@ -77,6 +77,10 @@ func runUpdate(fromURL string) error {
 		return fmt.Errorf("chmod failed: %w", err)
 	}
 
+	if runtime.GOOS == "windows" {
+		return runUpdateWindows(tmpPath, exePath)
+	}
+
 	if err := os.Rename(tmpPath, exePath); err != nil {
 		// Fallback for cross-device rename: copy
 		if err := copyFile(tmpPath, exePath); err != nil {
@@ -101,6 +105,46 @@ func runUpdate(fromURL string) error {
 		fmt.Println("Run 'repomind install' or re-run 'repomind update' in your project directories to refresh skills.")
 	}
 
+	return nil
+}
+
+// runUpdateWindows handles self-update on Windows where the running exe is locked.
+// It writes a batch script that waits for the current process to exit, then
+// replaces the binary, cleans up, and optionally syncs the project.
+func runUpdateWindows(tmpPath, exePath string) error {
+	projectRoot, _ := os.Getwd()
+
+	batContent := fmt.Sprintf(`@echo off
+chcp 65001 >nul
+echo RepoMind updating...
+timeout /t 2 /nobreak >nul
+copy /Y "%s" "%s" >nul
+del "%s"
+echo Update complete.
+`, tmpPath, exePath, tmpPath)
+
+	if fsutil.Exists(filepath.Join(projectRoot, ".repomind")) {
+		batContent += fmt.Sprintf(`
+cd /d "%s"
+"%s" sync-project
+`, projectRoot, exePath)
+	}
+
+	batPath := filepath.Join(os.TempDir(), "repomind-update.bat")
+	if err := os.WriteFile(batPath, []byte(batContent), 0755); err != nil {
+		return fmt.Errorf("cannot create update script: %w", err)
+	}
+
+	cmd := exec.Command("cmd", "/c", "start", "/b", batPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("cannot launch update script: %w", err)
+	}
+
+	fmt.Println("Update scheduled. Exiting current process to apply...")
+	fmt.Println("The new version will be ready in a few seconds.")
+	os.Exit(0)
 	return nil
 }
 

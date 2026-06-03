@@ -6,12 +6,24 @@
 
 ## 安装
 
+### macOS / Linux
+
 ```bash
-# macOS / Linux — 自动识别平台，安装到 /usr/local/bin 或 ~/.local/bin
+# 自动识别平台，安装到 /usr/local/bin 或 ~/.local/bin
 curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.sh | bash
 ```
 
-安装后进入项目目录，初始化知识库：
+### Windows（PowerShell）
+
+```powershell
+# 下载最新版 repomind.exe 到当前目录
+curl.exe -fsSLo repomind.exe https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-windows-amd64.exe
+```
+
+下载后建议将 `repomind.exe` 移动到 `C:\Windows\System32\` 或添加到 PATH。
+也可以直接放在项目目录下使用。
+
+### 初始化知识库
 
 ```bash
 cd your-project

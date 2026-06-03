@@ -278,6 +278,7 @@ func ensureRepomindGitignore(projectRoot string) error {
 !index.json
 !modules/**
 !bin/repomind-internal
+!bin/repomind-internal.exe
 `
 	return os.WriteFile(filepath.Join(projectRoot, ".repomind", ".gitignore"), []byte(gitignore), 0644)
 }
