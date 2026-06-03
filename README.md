@@ -16,12 +16,12 @@ curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.s
 ### Windows（PowerShell）
 
 ```powershell
-# 下载最新版 repomind.exe 到当前目录
-curl.exe -fsSLo repomind.exe https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-windows-amd64.exe
+# 一键安装——自动识别架构、安装到 ProgramData、配置系统 PATH
+powershell -c "iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex"
 ```
 
-下载后建议将 `repomind.exe` 移动到 `C:\Windows\System32\` 或添加到 PATH。
-也可以直接放在项目目录下使用。
+如果以**管理员**身份运行，安装到 `C:\ProgramData\repomind\bin` 并配置系统 PATH；
+普通用户则安装到 `%LOCALAPPDATA%\repomind\bin` 并配置用户 PATH。
 
 ### 初始化知识库
 

@@ -2,8 +2,11 @@
 set -e
 
 # ============================================================
-# RepoMind 一键安装脚本
+# RepoMind 一键安装脚本（macOS / Linux）
 # Usage: ./install.sh [release-url]
+#
+# Windows 用户请使用:
+#   powershell -c "iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex"
 #
 # 默认从 GitHub Releases 下载最新版本，也支持自定义 URL。
 #
