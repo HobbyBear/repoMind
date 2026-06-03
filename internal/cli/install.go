@@ -177,7 +177,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Git:")
 	fmt.Println("  .gitattributes — graphify-out/* 冲突时自动取远端")
-	fmt.Println("  pre-commit hook — 提交前 graphify --update")
+	fmt.Println("  pre-commit hook — 提交前 graphify update .")
 	fmt.Println()
 	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
 	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
@@ -217,14 +217,14 @@ func ensureMergeDriver() error {
 	return exec.Command("git", "config", "merge.theirs.driver", "cp %B %A").Run()
 }
 
-// pre-commit hook: graphify --update before every commit
+// pre-commit hook: graphify update before every commit
 func ensurePreCommitHook(gitRoot string) error {
 	hookPath := filepath.Join(gitRoot, ".git", "hooks", "pre-commit")
 	hook := `#!/bin/sh
 # RepoMind pre-commit hook — 提交前增量更新图谱
 # 纯代码项目只走 AST，不调 LLM，秒级完成
 if command -v graphify >/dev/null 2>&1; then
-    graphify --update 2>/dev/null || true
+    graphify update . 2>/dev/null || true
 fi
 `
 	// Append to existing hook file if present
@@ -233,7 +233,7 @@ fi
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(data), "graphify --update") {
+		if strings.Contains(string(data), "graphify update") {
 			return nil
 		}
 		f, err := os.OpenFile(hookPath, os.O_APPEND|os.O_WRONLY, 0755)

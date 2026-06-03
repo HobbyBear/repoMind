@@ -48,7 +48,7 @@ JSONEOF
 
 ## 步骤 1：增量更新图谱（仅编码后）
 
-如果有代码改动，调用 `/graphify --update` 增量更新 AST。
+如果有代码改动，调用 `graphify update .` 增量更新 AST。
 
 纯代码项目只走 AST，秒级完成。
 
