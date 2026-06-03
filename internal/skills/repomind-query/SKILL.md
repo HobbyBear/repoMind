@@ -1,6 +1,6 @@
 ---
 name: repomind-query
-description: 查阅任何代码/业务逻辑时优先自动触发，查询 RepoMind 知识库 + graphify 图谱定位关键代码，回答后自动保存发现供 repomind-summary 更新知识库。
+description: 查阅任何代码/业务逻辑时优先自动触发，查询 RepoMind 知识库 + graphify 图谱定位关键代码，回答后自动保存发现供 repomind-summary 更新知识库。对话中持续发现的新知识需在结束时闭环。
 ---
 
 # RepoMind 编码前/问答分析
@@ -127,3 +127,18 @@ Skill: repomind-summary
 ```
 
 > 这样确保 "查询 → 发现 → 存储" 全流程闭环，新知识不会因为忘记执行总结而被遗漏。
+
+## 步骤 8：对话中的持续发现提醒
+
+**重要**：repomind-query 在对话开始时执行一次，但业务流程知识可能在**整个对话过程中**持续涌现。以下场景需要你在对话中保持敏锐：
+
+- 用户在排查 Bug 时解释了某个函数的调用链路 — 如果知识库里没有记录
+- 分析了代码演进历史（不同版本的 Bug 和修复）
+- 确认了某个业务规则或边界条件
+- 得到了排查用的 SQL 组合、日志特征
+
+**任何时候发现了超出已有知识库的新业务流程/规则**，不要等到下次编码：
+1. 手动写入 `.repomind/.query-findings.json`（或追加到已有文件）
+2. 执行 `Skill: repomind-summary`
+
+不需要重新调用 repomind-query。新知识直接闭环即可。

@@ -1,13 +1,14 @@
 ---
 name: repomind-summary
-description: 编码后或问答后总结。读取 .repomind/.query-findings.json（如有），增量更新模块文档和 index.json。
+description: 编码后、问答后或业务讨论后总结。读取 .repomind/.query-findings.json（如有），增量更新模块文档和 index.json。不限触发场景，有新业务知识就闭环。
 ---
 
-# RepoMind 编码/问答后更新
+# RepoMind 编码/问答/业务讨论后更新
 
-当以下场景完成时，必须执行本流程：
+当以下**任一**场景完成时，必须执行本流程：
 - 修改了代码（编码后）
 - 回答了代码/业务问题且有新发现（`.repomind/.query-findings.json` 存在且 `needs_summary = true`）
+- **在业务讨论/排查/需求分析中发现了超出已有知识库的知识**（没有 query-findings 文件时，手动编写发现内容）
 
 ## 步骤 0：读取查询发现（如有）
 
@@ -16,6 +17,34 @@ cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}
 ```
 
 如果 `needs_summary = true`，将发现中的内容作为本次更新的输入。
+
+## 步骤 0.5：无 query-findings 时的处理
+
+如果 `.repomind/.query-findings.json` 不存在（即本次总结不是由 `repomind-query` 触发的，而是在业务讨论/排查中自行发现的新知识），你需要：
+
+1. **回顾整个对话**，找出所有超出已有知识库的新知识
+2. **自行编写发现内容**，遵循 query-findings 的格式写入临时文件：
+
+```bash
+cat > .repomind/.query-findings.json << 'JSONEOF'
+{
+  "trigger": "业务讨论",
+  "intent": "描述发现了什么",
+  "known_modules": ["涉及模块"],
+  "new_findings": [
+    {
+      "type": "new_business_rule|new_code_location|module_update",
+      "module": "模块名",
+      "file": "路径",
+      "content": "发现描述"
+    }
+  ],
+  "needs_summary": true
+}
+JSONEOF
+```
+
+3. 然后继续正常流程（步骤 1-5）
 
 ## 步骤 1：增量更新图谱（仅编码后）
 

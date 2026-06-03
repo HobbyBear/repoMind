@@ -6,9 +6,26 @@
 
 ## 安装
 
+### 一键安装
+
 ```bash
-# macOS / Linux
-curl -fsSL https://github.com/HobbyBear/repoMind/releases/latest/download/install.sh | bash
+# macOS (Intel)
+curl -fsSL https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-darwin-amd64 -o /usr/local/bin/repomind && chmod +x /usr/local/bin/repomind
+
+# macOS (Apple Silicon)
+curl -fsSL https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-darwin-arm64 -o /usr/local/bin/repomind && chmod +x /usr/local/bin/repomind
+
+# Linux (amd64)
+curl -fsSL https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-linux-amd64 -o /usr/local/bin/repomind && chmod +x /usr/local/bin/repomind
+
+# Linux (arm64)
+curl -fsSL https://github.com/HobbyBear/repoMind/releases/latest/download/repomind-linux-arm64 -o /usr/local/bin/repomind && chmod +x /usr/local/bin/repomind
+```
+
+### 更新到最新版本
+
+```bash
+repomind update     # 自动下载并覆盖当前版本
 ```
 
 安装后进入项目目录，初始化知识库：
