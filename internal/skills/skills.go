@@ -3,7 +3,7 @@ package skills
 import (
 	"embed"
 	"os"
-	"path/filepath"
+	"path"
 )
 
 //go:embed repomind-query/SKILL.md repomind-summary/SKILL.md repomind-init/SKILL.md
@@ -16,8 +16,8 @@ func InstallSkills(repoRoot string) error {
 	}
 
 	targets := []string{
-		filepath.Join(repoRoot, ".claude", "skills"),
-		filepath.Join(repoRoot, ".codex", "skills"),
+		path.Join(repoRoot, ".claude", "skills"),
+		path.Join(repoRoot, ".codex", "skills"),
 	}
 
 	for _, entry := range entries {
@@ -25,16 +25,16 @@ func InstallSkills(repoRoot string) error {
 			continue
 		}
 		skillName := entry.Name()
-		data, err := skillFiles.ReadFile(filepath.Join(skillName, "SKILL.md"))
+		data, err := skillFiles.ReadFile(path.Join(skillName, "SKILL.md"))
 		if err != nil {
 			return err
 		}
 		for _, dstRoot := range targets {
-			dstDir := filepath.Join(dstRoot, skillName)
+			dstDir := path.Join(dstRoot, skillName)
 			if err := os.MkdirAll(dstDir, 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(filepath.Join(dstDir, "SKILL.md"), data, 0644); err != nil {
+			if err := os.WriteFile(path.Join(dstDir, "SKILL.md"), data, 0644); err != nil {
 				return err
 			}
 		}
