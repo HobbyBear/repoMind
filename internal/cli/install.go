@@ -38,6 +38,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	dirs := []string{
 		filepath.Join(repomindDir, "modules"),
+		filepath.Join(repomindDir, "glossary"),
 		filepath.Join(repomindDir, "graph"),
 		filepath.Join(repomindDir, "bin"),
 	}
@@ -59,6 +60,28 @@ func runInstall(cmd *cobra.Command, args []string) error {
 - AI 注意事项
 
 这些文档由 AI skill（Claude Code / Codex）创建和维护。
+除非你清楚自己在做什么，否则不要手动编辑。
+`); err != nil {
+		return err
+	}
+
+	// glossary/README.md
+	if err := fsutil.WriteFile(filepath.Join(repomindDir, "glossary", "README.md"), `# RepoMind Glossary Cards
+
+此目录存放业务语义卡片。
+
+每个文件记录一个业务概念：
+- 是什么
+- 为什么有
+- 用户可见表现
+- 核心规则/边界
+- 易混淆概念
+- 主模块与关联模块
+
+这里不记录源码里 30 秒内能直接看出来的内容。
+只沉淀代码不容易直接表达的业务语义、隐性约束、历史原因和排查经验。
+
+这些卡片由 AI skill（Claude Code / Codex）创建和维护。
 除非你清楚自己在做什么，否则不要手动编辑。
 `); err != nil {
 		return err
@@ -137,6 +160,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(".repomind/")
 	fmt.Println("  index.json")
+	fmt.Println("  glossary/")
 	fmt.Println("  modules/")
 	fmt.Println("  graph/")
 	fmt.Println("  bin/repomind-internal")
@@ -276,6 +300,7 @@ func ensureGraphifyGitignore(projectRoot string) error {
 func ensureRepomindGitignore(projectRoot string) error {
 	gitignore := `# RepoMind 知识库文件 —— 必须被 git 跟踪
 !index.json
+!glossary/**
 !modules/**
 !bin/repomind-internal
 !bin/repomind-internal.exe
@@ -307,11 +332,12 @@ func ensureAgentInstructions(projectRoot string) error {
 
 	### 编辑/修改代码前
 	1. 必须先执行 ` + bt + `repomind-query` + bt + ` skill 查找相关模块
-	2. 理解业务上下文后再动手
+	2. 如用户在问“某个业务概念是什么/为什么存在/和什么容易混淆”，优先查 ` + bt + `.repomind/glossary/` + bt + ` 业务卡片
+	3. 理解业务上下文后再动手
 
 	### 编码完成后
 	1. 必须执行 ` + bt + `repomind-summary` + bt + ` skill 更新知识库
-	2. 包括 graphify 增量更新、模块文档更新、index.json 同步
+	2. 包括 graphify 增量更新、业务卡片更新、模块文档更新、index.json 同步
 
 	### 排查 Bug 时
 	1. 先执行 ` + bt + `repomind-query` + bt + ` skill 理解相关业务上下文
@@ -319,11 +345,12 @@ func ensureAgentInstructions(projectRoot string) error {
 
 	### 业务讨论/排查/需求分析过程中（新增——全场景覆盖）
 	**不限场景，只要在对话中发现了以下内容，必须在对话结束前执行 ` + bt + `repomind-summary` + bt + ` 更新知识库：**
-	1. **业务流程/调用链路** — 之前文档没记录过的完整流程（如迁移流程、VIP 查询链路、支付回调链）
+	1. **业务语义/概念边界** — 某个业务概念是什么、为什么存在、和什么容易混淆
 	2. **业务规则/边界条件** — 关键判断逻辑、历史原因、遗留问题（如某个函数只查某张表不查另一张的原因）
 	3. **代码演进历史** — 同一函数在不同版本的 Bug 和修复记录
 	4. **排查关键路径** — 特定的 SQL 查询组合、日志特征、判断链条
-	**规则：** 只要有上述任何一种知识被确认是知识库里没有的，就必须闭环。
+	**规则：** 只记录代码不容易直接看出的知识；代码中一眼可见的函数逻辑、SQL、表字段不要重复写入。
+	只要有上述任何一种知识被确认是知识库里没有的，就必须闭环。
 	不需要等待「编码完成后」，也不需要依赖 ` + "`new_findings`" + ` 发现标记。
 	`
 

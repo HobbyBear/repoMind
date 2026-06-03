@@ -101,36 +101,66 @@ git ls-files
 - 在代码中体现为一个或多个目录
 - 有明确的入口文件
 
-## 步骤 5.5：初始化业务黑话词典（glossary）
+## 步骤 5.5：初始化业务语义卡片（glossary 目录）
 
-在创建模块文档之前，先分析代码库中的常见命名规律，生成初始业务黑话词典：
+在创建模块文档之前，先为仓库中最核心的业务概念生成初始业务卡片：
 
-1. **收集字段命名**：从主要数据表（扫描 SQL DDL 或 model struct 文件）和 API 接口文档中提取字段名
-2. **收集场景常量**：从 `buss_constants/contants.go` 等常量文件提取 scenes 名称
-3. **构建映射表**：将中文业务口语转化为代码/DB 术语
+1. **收集高频业务概念**：从目录名、服务名、配置名、接口名、GRAPH_REPORT 高频概念中找“像业务能力”的对象
+2. **提炼业务定义**：回答“它是什么、为什么有、用户可见表现是什么”
+3. **识别边界和混淆点**：它不是什么、和哪个模块/概念容易混淆
+4. **补代码落点**：为每张卡记录主模块、关联模块、关键代码入口
 
-初始 glossary 的生成原则：
-- 优先从建表语句的 COMMENT 注释提取（如 `chat_bg` 注释为"聊天背景图片"）
-- 优先从常量命名和注释提取（如 `discord_auto_review`）
-- 不要编造映射关系，提取不到则留空，等待后续补充
-- 参考 graphify 的 GRAPH_REPORT.md 中的高频概念
+初始业务卡片的生成原则：
+- 优先写“代码不容易直接表达的业务语义”，不要抄函数逻辑
+- 优先选择高价值概念：核心角色类型、会员体系、推荐体系、审核体系、创作者体系
+- 不要编造业务目的；不确定就只写“是什么 + 主模块 + 关键代码”，等待后续补充
+- 参考 graphify 的 `GRAPH_REPORT.md` 中的高频概念，但不要把图谱社区名直接当业务定义
 
-生成的 glossary.md 格式：
+生成的目录结构：
+
+```text
+.repomind/
+  glossary/
+    README.md
+    pro-character.md
+    creator-level.md
+    ...
+```
+
+单张卡片格式：
+
 ```markdown
-# 业务黑话 ↔ 代码术语映射
+# 概念：XXX
 
-## [领域名]
+## 是什么
 
-| 业务黑话 | 代码/DB 术语 | 说明 |
-|---------|-------------|------|
-| ... | ... | ... |
+## 为什么有
+
+## 用户可见表现
+
+## 核心规则
+
+## 易混淆概念
+
+## 主模块
+
+## 关联模块
+
+## 关键代码
 ```
 
 ## 步骤 6：创建模块文档和索引（智能合并）
 
 **重要：所有写入都是合并，不是覆盖。** 如果模块文档已存在，保留已有内容，只补充新的发现。
 
-### 6a：创建/合并 `.repomind/modules/<模块名>.md`
+### 6a：创建/合并 `.repomind/glossary/*.md`
+
+对每个高价值业务概念：
+1. 先检查 `.repomind/glossary/<概念名>.md` 是否已存在
+2. **如果已存在**：保留原有定义和边界描述，只补充新增的业务语义、混淆点、关键规则
+3. **如果不存在**：按步骤 5.5 的模板新建
+
+### 6b：创建/合并 `.repomind/modules/<模块名>.md`
 
 对每个模块：
 1. 先检查 `.repomind/modules/<模块名>.md` 是否已存在
@@ -173,7 +203,7 @@ git ls-files
 - **判断依据**：参考 `summary.json` 的 `symbols` 字段，按 file 聚合即可得到每个文件的函数数量
 - 函数名包含方法接收者（如 `*Service.CreateOrder`），便于区分同名方法
 
-### 6b：创建/合并 `.repomind/index.json`
+### 6c：创建/合并 `.repomind/index.json`
 
 **不要直接覆盖 index.json。** 先读取现有文件（如果存在），合并后写入：
 
@@ -201,12 +231,12 @@ git ls-files
 - `description`：一句话业务描述（中文）
 - `keywords`：中英文关键词数组，用于快速搜索定位
 
-### 6c：git add 知识库文件
+### 6d：git add 知识库文件
 
 将创建的模块文档和索引加入 git 版本控制：
 
 ```bash
-git add .repomind/modules/ .repomind/index.json
+git add .repomind/glossary/ .repomind/modules/ .repomind/index.json
 ```
 
 这确保 RepoMind 知识库随代码一起提交，团队共享。
@@ -220,6 +250,10 @@ git add .repomind/modules/ .repomind/index.json
 - payment.md — 支付模块
 - order.md — 订单模块
 - user.md — 用户模块
+
+### 创建的业务卡片
+- pro-character.md — Pro 角色
+- creator-level.md — 创作者等级
 
 ### index.json 已更新
 - 登记了 N 个模块，共 M 个关键词
