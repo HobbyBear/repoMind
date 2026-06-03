@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,17 +64,29 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// index.json
-	if err := fsutil.WriteFile(filepath.Join(repomindDir, "index.json"), `{"modules": []}`+"\n"); err != nil {
-		return err
-	}
-
-	// graph summary
+	// graph summary (run before index.json merge so we have candidates)
 	summary, _ := graph.GraphScan(projectRoot, filepath.Join(repomindDir, "graph"))
 	if summary == nil {
 		summary = &graph.Summary{Mode: "fallback"}
 	}
 	if err := graph.WriteSummary(filepath.Join(repomindDir, "graph"), summary); err != nil {
+		return err
+	}
+
+	// index.json — merge with existing, never destroy
+	idxPath := filepath.Join(repomindDir, "index.json")
+	var existing []moduleEntry
+	if data, err := os.ReadFile(idxPath); err == nil {
+		var idx struct {
+			Modules []moduleEntry `json:"modules"`
+		}
+		if json.Unmarshal(data, &idx) == nil {
+			existing = idx.Modules
+		}
+	}
+	merged := mergeModules(existing, summary.ModuleCandidates)
+	idxData, _ := json.MarshalIndent(map[string]interface{}{"modules": merged}, "", "  ")
+	if err := fsutil.WriteFile(idxPath, string(idxData)+"\n"); err != nil {
 		return err
 	}
 
@@ -538,6 +551,35 @@ func cleanRepomindSection(path string) {
 
 // ensureGraphifyCLI checks for graphify, installs via pip if missing, and
 // deploys graphify skills to both Claude Code and Codex directories.
+
+type moduleEntry struct {
+	File        string   `json:"file"`
+	Description string   `json:"description"`
+	Keywords    []string `json:"keywords"`
+}
+
+// mergeModules merges existing index.json entries with new graph-scan candidates.
+// Existing modules are preserved; new candidates are added if not already present.
+func mergeModules(existing []moduleEntry, candidates []graph.ModuleCandidate) []moduleEntry {
+	seen := make(map[string]bool)
+	for _, m := range existing {
+		seen[m.File] = true
+	}
+	for _, c := range candidates {
+		name := c.Name + ".md"
+		if seen[name] {
+			continue
+		}
+		existing = append(existing, moduleEntry{
+			File:        name,
+			Description: name + " — TODO: 补充业务描述",
+			Keywords:    []string{c.Name},
+		})
+		seen[name] = true
+	}
+	return existing
+}
+
 func ensureGraphifyCLI() {
 	_, err := exec.LookPath("graphify")
 	if err != nil {
