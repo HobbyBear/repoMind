@@ -117,18 +117,13 @@ func runUpdateWindows(tmpPath, exePath string) error {
 	batContent := fmt.Sprintf(`@echo off
 chcp 65001 >nul
 echo RepoMind updating...
-REM Rename running exe, then copy
-ren "%s" "%s.old"
-if exist "%s.old" (
-    copy /Y "%s" "%s" >nul
-    del "%s.old"
-) else (
-    REM fallback: copy over running exe
-    copy /Y "%s" "%s" >nul
-)
+timeout /t 2 /nobreak >nul 2>&1
+ren "%s" "%s.old" 2>nul
+copy /Y "%s" "%s" >nul 2>nul
+del "%s.old" 2>nul
 del "%s"
 echo Update complete.
-`, tmpPath, exePath, exePath, tmpPath, exePath, exePath, tmpPath, exePath, tmpPath)
+`, exePath, exePath, tmpPath, exePath, exePath, tmpPath)
 
 	if fsutil.Exists(filepath.Join(projectRoot, ".repomind")) {
 		batContent += fmt.Sprintf(`
