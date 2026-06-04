@@ -1,16 +1,118 @@
 ---
 name: repomind-summary
-description: 编码后、问答后或业务讨论后总结。读取 .repomind/.query-findings.json（如有），增量更新业务卡片、模块文档和 index.json。不限触发场景，有新业务知识就闭环。
+description: 每次 AI 回答后做轻量 summary gate 判断；只有发现可复用的新业务知识、模块边界、排查经验或代码改动影响时，才执行写入。按知识类型路由更新 concepts、modules、troubles 和 index.json，避免把所有发现都塞进业务卡片。
 ---
 
 # RepoMind 编码/问答/业务讨论后更新
 
-当以下**任一**场景完成时，必须执行本流程：
-- 修改了代码（编码后）
-- 回答了代码/业务问题且有新发现（`.repomind/.query-findings.json` 存在且 `needs_summary = true`）
-- **在业务讨论/排查/需求分析中发现了超出已有知识库的知识**（没有 query-findings 文件时，手动编写发现内容）
+## 触发模型：每次回答后先做 summary gate
 
-## 步骤 0：读取查询发现（如有）
+每次 AI 回答代码、业务、排查、需求相关问题后，都要做一次轻量判断，但**不是每次都执行完整写入流程**。
+
+summary gate 只判断，不改文件。它回答三个问题：
+
+1. 这轮对话或代码改动是否产生了“代码本身不会直接告诉我的新知识”？
+2. 这些知识以后是否能复用于理解业务、修改代码或排查问题？
+3. 如果要沉淀，应该进入 `concepts`、`modules`、`troubles`、`index.json`，还是应该丢弃？
+
+只有 gate 通过时，才继续执行本 skill 的写入流程。
+
+## 完整 summary 的触发时机
+
+以下任一场景 gate 通过，必须执行完整流程：
+
+- **编码后**：修改了代码，并且影响业务语义、模块边界、关键入口、跨模块约束、排查路径或索引
+- **查询后**：`.repomind/.query-findings.json` 存在且 `needs_summary = true`
+- **问答后**：回答代码/业务问题时发现了超出已有知识库的新知识
+- **业务讨论后**：用户确认了新的业务规则、预期行为、边界条件、历史原因
+- **排查后**：形成了可复用的现象、判断路径、根因、验证步骤或坑点
+- **需求分析后**：发现了新的业务概念，或旧概念的新边界、负向规则、影响范围
+
+以下情况 gate 不通过，不执行完整 summary：
+
+- 只是回答了代码里显式可见的调用链、字段、SQL、if/else
+- 只是定位函数、文件、接口，但没有新的模块边界或 AI 注意事项
+- 只是复述已有知识库内容
+- 只是推测，用户没有确认，也没有当前代码证据支撑
+- 纯技术问题：依赖安装、编译、格式化、测试命令、通用语法问题
+
+## 知识写入目标边界
+
+### concepts：业务概念卡片
+
+只写业务层面的稳定知识：
+- 业务定义、存在目的、正常预期
+- 用户侧表现、系统侧数据流
+- 核心规则、边界条件、负向规则
+- 易混淆概念、历史原因、业务意图
+
+不要写：
+- 函数步骤、SQL、字段列表、结构体参数
+- 只对一次排查有效的临时现象
+- 仅用于定位代码的文件路径
+
+### modules：模块文档
+
+只写帮助 AI 以后改代码时不踩坑的信息：
+- 模块边界和职责变化
+- 关键入口文件、函数、接口
+- 跨模块约束、隐性依赖、修改影响面
+- AI 注意事项、业务语义变化的原因
+- 与 concepts/troubles 的简短引用
+
+不要写：
+- 函数内部伪代码、完整调用链、SQL 细节
+- 代码里 30 秒内可直接读到的普通实现
+- 业务概念的完整解释
+
+### troubles：历史排查记录
+
+只写可复用的排查经验：
+- 问题现象、触发条件、判断路径
+- 根因、验证方式、修复或规避方式
+- 下次容易忽略的坑点
+- 当前案例和历史案例的差异
+
+不要写：
+- 稳定业务定义
+- 单纯代码入口说明
+- 未验证的猜测
+
+### index.json：路由索引
+
+只写用于快速路由的模块信息：
+- 新增/删除模块
+- 模块 description 和 keywords 的必要变化
+- keywords 只放模块判别词
+
+不要写：
+- 业务规则解释
+- 排查过程
+- 泛业务词堆叠
+
+## 步骤 0：执行 summary gate
+
+先判断本次是否需要进入写入流程：
+
+| gate 问题 | 判断 |
+|-----------|------|
+| 是否有新知识？ | ✅/❌ |
+| 是否可复用？ | ✅/❌ |
+| 是否有证据？ | 用户确认 / 当前代码 / 排查结果 / 已有知识库 |
+| 推荐写入目标 | concepts / modules / troubles / index.json / discard |
+
+gate 通过条件：
+- 有新知识
+- 该知识可复用
+- 有用户确认、当前代码、实际排查结果或已有知识库交叉印证
+- 能明确写入目标
+
+gate 不通过时：
+- 不写 `.repomind/.query-findings.json`
+- 不更新知识库
+- 如果只是调用本 skill 做检查，直接输出“无需更新”的简短说明
+
+## 步骤 1：读取查询发现（如有）
 
 ```bash
 cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}'
@@ -18,12 +120,13 @@ cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}
 
 如果 `needs_summary = true`，将发现中的内容作为本次更新的输入。
 
-## 步骤 0.5：无 query-findings 时的处理
+## 步骤 1.5：无 query-findings 时的处理
 
 如果 `.repomind/.query-findings.json` 不存在（即本次总结不是由 `repomind-query` 触发的，而是在业务讨论/排查中自行发现的新知识），你需要：
 
 1. **回顾整个对话**，找出所有超出已有知识库的新知识
-2. **自行编写发现内容**，遵循 query-findings 的格式写入临时文件：
+2. 先通过 summary gate 判断是否真的需要沉淀
+3. gate 通过后，自行编写发现内容，遵循 query-findings 的格式写入临时文件：
 
 ```bash
 cat > .repomind/.query-findings.json << 'JSONEOF'
@@ -33,7 +136,7 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
   "known_modules": ["涉及模块"],
   "new_findings": [
     {
-      "type": "new_business_rule|new_code_location|module_update|trouble_record",
+      "type": "concept_knowledge|module_knowledge|trouble_knowledge|index_knowledge",
       "module": "模块名",
       "file": "路径",
       "content": "发现描述"
@@ -44,15 +147,20 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
 JSONEOF
 ```
 
-3. 然后继续正常流程（步骤 1-5）
+4. 然后继续正常流程
 
-## 步骤 1：增量更新图谱（仅编码后）
+兼容旧类型：
+- `new_business_card`、`new_business_rule` → 视为 `concept_knowledge`
+- `module_update`、`new_code_location` → 视为 `module_knowledge`
+- `trouble_record` → 视为 `trouble_knowledge`
+
+## 步骤 2：增量更新图谱（仅编码后）
 
 如果有代码改动，调用 `graphify update .` 增量更新 AST。
 
 纯代码项目只走 AST，秒级完成。
 
-## 步骤 2：查看改动
+## 步骤 3：查看改动
 
 ```bash
 git diff HEAD --stat
@@ -61,7 +169,28 @@ git diff HEAD --name-only
 
 如果是从问答发现来的更新（无代码改动），跳过此步。
 
-## 步骤 3：分析业务影响范围（先判断什么该记、什么不该记）
+## 步骤 4：分拣发现类型（先判断写哪里）
+
+在更新任何文件之前，先把 `new_findings` 和代码 diff 分拣成以下类型：
+
+| 类型 | 写入目标 | 例子 |
+|------|----------|------|
+| `concept_knowledge` | `.repomind/concepts/*.md` | 新业务定义、预期行为、边界、为什么这样设计 |
+| `module_knowledge` | `.repomind/modules/*.md` | 模块边界、关键入口、跨模块约束、AI 注意事项 |
+| `trouble_knowledge` | `.repomind/troubles/*.md` | 现象、排查路径、根因、验证方式、历史坑 |
+| `index_knowledge` | `.repomind/index.json` | 新增/删除模块、模块路由关键词变化 |
+| `discard` | 不写入 | 代码里直接可见的实现细节、未验证推测、一次性上下文 |
+
+同一条发现可能写入多个目标，但每个目标只写自己该承担的摘要，不要全文复制。
+
+冲突处理：
+- 如果是稳定业务预期，写 `concepts`
+- 如果是某次异常的排查过程，写 `troubles`
+- 如果是以后改代码必须知道的坑，写 `modules` 的 AI 注意事项
+- 如果只是帮助找到模块，写 `index.json`
+- 如果没有复用价值或证据不足，归为 `discard`
+
+## 步骤 5：分析业务影响范围（先判断什么该记、什么不该记）
 
 ### 核心原则：只记"代码不会告诉你的东西"
 
@@ -81,16 +210,17 @@ git diff HEAD --name-only
 
 **决策标准：如果一条信息可以在 30 秒内从代码或 git log 中直接读到，就不要写进知识库。**
 
-## 步骤 4：更新知识库（强制业务卡片检查）
+## 步骤 6：更新知识库（按类型路由）
 
-**核心原则：每次改动都必须检查并说明业务卡片状态。**
+**核心原则：必须检查业务概念，但只在业务语义变化时更新业务卡片。**
 
-### 步骤 4.0：分析改动涉及的业务概念
+### 步骤 6.0：分析改动涉及的业务概念
 
-**每次编码改动后，必须回答：**
+每次编码改动或业务问答后，必须回答：
 1. **涉及了哪些业务概念？**（如：退款、订单状态、会员等级）
 2. **现有业务卡片是否存在？**
-3. **是新增还是更新？为什么？**
+3. **是否出现稳定业务语义变化？**
+4. **应新建、更新、引用，还是不写入 concepts？为什么？**
 
 **判断流程：**
 
@@ -99,9 +229,13 @@ git diff HEAD --name-only
       ↓
 检查 .repomind/concepts/ 是否存在对应卡片
       ↓
-├─ 不存在 → 必须新建，说明：为何是新的业务能力
+├─ 不存在
+│    ├─ 有稳定业务定义/预期/边界 → 新建卡片
+│    └─ 只是代码入口、临时排查、未确认推测 → 不新建，转 modules/troubles/discard
 │
-└─ 存在 → 必须增量合并，说明：
+└─ 存在
+     ├─ 有新的业务规则/边界/预期 → 增量合并
+     └─ 只是实现调整或已被覆盖 → 不更新，说明原因
       - 哪些业务规则/边界发生了变化
       - 为什么需要补充/修正
       - 如果不需要修改，说明：为何现有卡片已完整覆盖
@@ -117,14 +251,18 @@ git diff HEAD --name-only
 | 退款 | 更新 | 新增支持部分退款场景，原卡片只描述全额退款 |
 | 创作者等级 | 无变化 | 本次改动仅调整计算方式，业务定义未变 |
 | 活动奖励 | 新建 | 新引入的业务概念，需沉淀奖励发放规则 |
+| 支付回调入口 | 不写入 concepts | 仅新增代码入口，无新的业务定义或边界 |
 ```
 
-### 4a：更新 `.repomind/concepts/*.md` 业务卡片
+### 6a：更新 `.repomind/concepts/*.md` 业务卡片
 
-**强制更新原则：**
-- **无卡片 → 新建**：识别出新业务概念，必须创建卡片
-- **有卡片 → 增量合并**：现有卡片必须读取，检查是否需要补充
-- **每次必须说明**：为什么新建/为什么不新建/为什么更新
+只处理 `concept_knowledge`，以及兼容旧类型 `new_business_card`、`new_business_rule`。
+
+**更新条件：**
+- **无卡片 + 有稳定业务语义** → 新建
+- **有卡片 + 有新增/修正的业务定义、预期、边界、负向规则、历史原因** → 增量合并
+- **有卡片 + 本次只是实现调整** → 不更新，并在摘要说明
+- **无卡片 + 本次只是代码入口或排查记录** → 不新建，改写入 modules/troubles
 
 **增量合并策略（按新模板结构）：**
 
@@ -228,7 +366,9 @@ git diff HEAD --name-only
 - 文件名用 kebab-case，例如 `pro-character.md`、`creator-level.md`
 - 标题用中文业务概念，便于人读
 
-### 4b：更新 `.repomind/modules/*.md`
+### 6b：更新 `.repomind/modules/*.md`
+
+只处理 `module_knowledge`，以及兼容旧类型 `module_update`、`new_code_location`。
 
 **核心原则：永远追加或合并，不要整体覆盖。** 更新前先读取现有文档，只修改变动的部分，保留未涉及的内容。
 
@@ -252,7 +392,9 @@ git diff HEAD --name-only
 - 模块所有关键代码被删除 → 删除该 `.md` 文件
 - 修改场景不再适用 → 移除过时条目
 
-### 4b：同步更新 `.repomind/index.json`
+### 6c：同步更新 `.repomind/index.json`
+
+只处理 `index_knowledge`，以及编码后确实发生模块新增/删除/路由关键词变化的场景。
 
 - **新增模块** → 在 `modules` 数组中添加条目（file/description/keywords）
 - **修改模块** → 更新对应条目的 description/keywords
@@ -263,9 +405,11 @@ git diff HEAD --name-only
 - 概念解释交给 `.repomind/concepts/*.md`
 - 如果某个词更适合回答“它是什么”，优先沉淀成业务卡片，不要勉强塞进模块 keywords
 
-### 4b.5：排查记录写入（trouble_record 类型）
+### 6d：排查记录写入
 
-如果 `new_findings` 中存在 `type: "trouble_record"` 的条目，执行以下流程：
+只处理 `trouble_knowledge`，以及兼容旧类型 `trouble_record`。
+
+如果 `new_findings` 中存在排查类条目，执行以下流程：
 
 **1. 读取排查记录目录**
 
@@ -275,7 +419,7 @@ ls .repomind/troubles/ 2>/dev/null || mkdir -p .repomind/troubles/
 
 **2. 创建或追加排查记录**
 
-每条 `trouble_record` 类型的发现，按以下模板在 `.repomind/troubles/` 下创建一个 `.md` 文件：
+每条排查类发现，按以下模板在 `.repomind/troubles/` 下创建一个 `.md` 文件：
 
 ```markdown
 # 排查：<标题>
@@ -307,26 +451,40 @@ ls .repomind/troubles/ 2>/dev/null || mkdir -p .repomind/troubles/
 - 如果已有同名文件，追加「同类问题」小节，不要覆盖
 
 **4. 清理**
-- 写入完成后，从 `new_findings` 中移除已处理的 `trouble_record` 条目（但保留其他类型）
+- 写入完成后，从 `new_findings` 中移除已处理的排查类条目（但保留其他类型）
 
-### 4c：清理临时文件
+### 6e：清理临时文件
 
 ```bash
 rm -f .repomind/.query-findings.json
 ```
 
-## 步骤 5：输出变更摘要（强制业务卡片说明）
+## 步骤 7：输出变更摘要
 
-**必须包含业务卡片更新说明表格。**
+**必须包含 summary gate 结果、知识写入路由和业务卡片更新说明。**
 
 ```markdown
 ## RepoMind 更新摘要
+
+### Summary Gate
+| 问题 | 结果 |
+|------|------|
+| 是否有新知识 | ✅/❌ |
+| 是否可复用 | ✅/❌ |
+| 写入目标 | concepts/modules/troubles/index.json/discard |
 
 ### 来源
 - [编码后] 或 [问答后]
 
 ### 修改的文件
 - ...
+
+### 知识写入路由
+| 发现 | 类型 | 写入目标 | 理由 |
+|------|------|----------|------|
+| ... | concept_knowledge | concepts/xxx.md | 新增稳定业务边界 |
+| ... | module_knowledge | modules/xxx.md | 新增以后改代码必须知道的约束 |
+| ... | discard | 不写入 | 代码里可直接读到 |
 
 ### 业务卡片更新说明（必填）
 
@@ -338,8 +496,9 @@ rm -f .repomind/.query-findings.json
 
 **说明：**
 - 每次改动涉及的业务概念都必须列出
-- 无变化也必须说明"为什么不变化"
-- 理由要具体，不能写"无"
+- 不涉及 concepts 写入也必须说明原因
+- 无变化也必须说明为什么不变化
+- 理由要具体，不能写“无”
 
 ### 影响的业务模块
 - ...
@@ -356,8 +515,9 @@ rm -f .repomind/.query-findings.json
 
 **强制要求：**
 - ✅ 必须列出本次改动涉及的所有业务概念
-- ✅ 必须说明每个概念的操作（新建/更新/无变化）
-- ✅ 必须说明理由（为什么不能偷懒跳过）
+- ✅ 必须说明每个概念的操作（新建/更新/无变化/不写入 concepts）
+- ✅ 必须说明理由（为什么写入或为什么不写入）
+- ✅ 必须列出被丢弃的发现及原因
 - ❌ 不能省略业务卡片说明部分
 - ❌ 不能写"无明显变化"这类模糊表述
 
