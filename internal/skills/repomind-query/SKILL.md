@@ -15,7 +15,7 @@ metadata:
 
 1. 先识别意图维度，再决定查哪些知识源。
 2. 先读元数据，再决定打开哪些正文。
-3. 路由不依赖 `index.json` 或 README；只依赖各知识文档自己的 `name` / `description`。
+3. 路由不依赖 `index.json` 或 README；优先依赖各知识文档自己的 `name` / `description`，其中 `modules` 还要额外使用 `keywords`。
 4. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
 
 ## 知识源边界
@@ -47,6 +47,12 @@ frontmatter `description` 必须能回答：
 - 这个模块管什么业务
 - 什么场景需要打开它
 - 典型跨模块风险是什么
+
+frontmatter `keywords` 必须承担：
+
+- 模块名和常见别称
+- 英文名、缩写、核心业务词
+- 用户最可能拿来搜这个模块的 3-8 个判别词
 
 ### troubles
 
@@ -91,7 +97,7 @@ frontmatter `description` 必须能回答：
 读取 JSON 中三类信息：
 
 - `concepts[].name/description`
-- `modules[].name/description`
+- `modules[].name/keywords/description`
 - `troubles[].name/description`
 
 这一阶段只做 skill-style 首轮匹配，不打开全部 markdown 正文。
@@ -126,7 +132,7 @@ frontmatter `description` 必须能回答：
 
 当代码模块维度激活时：
 
-1. 先用问题里的业务域、改动意图、接口/模块名与 `modules[].name/description` 匹配。
+1. 先用问题里的业务域、改动意图、接口/模块名与 `modules[].name/keywords/description` 匹配。
 2. 只打开最相关的 1-3 份模块文档。
 3. 从正文提炼关键入口、修改场景、AI 注意事项。
 4. 如果模块文档已给出具体入口，再去 graphify/source 验证当前实现。
@@ -153,6 +159,15 @@ frontmatter `description` 必须能回答：
 1. 命中的模块文档给出的入口
 2. graphify / graph summary
 3. 必要时再读源码
+
+**强制总结规则：**
+
+- 如果本轮代码定位不是直接从现有 `modules` 文档命中入口，而是依赖 graphify/source/`rg` 继续找出来的，那么本轮结束前必须触发一次 `repomind-summary`
+- 原因不是“查了代码就一定有新知识”，而是这通常意味着现有模块文档或模块关键词不足以完成首轮路由
+- 此时至少要写一条 `module_knowledge`，说明：
+  - 缺了哪个入口定位
+  - 缺了哪些模块关键词/别称/入口词
+  - 以后用户再问同类问题时，模块文档应该如何更快命中
 
 ## 步骤 4：根据维度组合查询顺序
 
@@ -226,6 +241,7 @@ JSONEOF
 
 - `new_findings` 为空时，`needs_summary` 必须为 `false`
 - 只要存在任何新知识，`needs_summary` 就必须为 `true`
+- 如果本轮发生了“绕过 module 文档、直接查代码/图谱才定位到实现”的情况，即使最后只补模块入口词或关键词，也必须令 `needs_summary = true`
 
 ## 步骤 7：自动触发 summary
 
@@ -243,3 +259,11 @@ Skill: repomind-summary
 2. 调用 `repomind-summary`
 
 不需要重新跑 query。
+
+如果持续发现的是：
+
+- 模块文档缺入口
+- 模块关键词不够
+- 用户常用叫法没进 `keywords`
+
+也同样要写入 `module_knowledge`，然后触发 `repomind-summary`。

@@ -11,7 +11,7 @@ metadata:
 
 1. 先做 summary gate，只有值得沉淀才写文件。
 2. RepoMind 不再维护 `index.json`；路由元数据写在各知识文档自己的 frontmatter。
-3. 每次更新正文时，都要同时检查 `name` / `description` 是否还适合检索。
+3. 每次进入 summary，都要优先检查索引元数据；`description` 是首要检索摘要，`modules` 的 `keywords` 是辅助定位词。
 4. 只记录“代码不会直接告诉你的东西”。
 
 ## 步骤 0：先修正旧格式
@@ -37,6 +37,21 @@ metadata:
 
 gate 不通过时，直接输出“无需更新”，不要写文件。
 
+这里的“新知识”不只包括业务规则，还包括：
+
+- 现有模块文档没有覆盖到的关键入口
+- 现有模块关键词没有覆盖到的常见搜索词/别称
+- 现有模块文档没有写出的常见修改场景
+
+也就是说：**只要本轮代码查找暴露出 RepoMind 路由缺口，这本身就是需要 summary 的新知识。**
+
+但是以下场景默认 **gate 通过，必须进入完整 summary 流程**：
+
+- 本轮有业务代码修改
+- 本轮有业务/排查/PRD 相关结论
+- 本轮为了定位代码，绕过了现有 `modules` 文档，转而直接查 graphify/source/`rg`
+- 本轮识别出应该新增、删除或收紧某个模块的 `keywords`
+
 ## 步骤 2：读取待处理发现
 
 优先读取：
@@ -46,6 +61,8 @@ cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}
 ```
 
 如果没有这个文件，但本轮问答/排查确实形成了新知识，就按同样格式自行生成一个临时发现文件再继续。
+
+如果本轮存在“直接查代码才完成定位”的情况，即使 `.query-findings.json` 还没写，也必须自行补一份临时发现文件，至少包含一条 `module_knowledge`。
 
 兼容旧类型时，先做归一化：
 
@@ -61,9 +78,14 @@ cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}
 .repomind/bin/repomind-internal kb-metadata
 ```
 
-然后按 `name` / `description` 决定要打开哪些知识文档。
+然后按 `name` / `description` 决定要打开哪些知识文档；对 `modules` 还要同时看 `keywords`。
 
 不要直接全量打开所有 `concepts/*.md`、`modules/*.md`、`troubles/*.md`。
+
+进入正文合并前，先单独判断：
+
+- 这次发现是否改变了文档的适用场景、业务边界、典型现象或常见叫法
+- 如果改变了，即使正文只改一点点，也要优先刷新 frontmatter 元数据
 
 ## 知识写入边界
 
@@ -110,6 +132,12 @@ frontmatter `description` 必须覆盖：
 - 何时应该打开
 - 典型影响面或风险
 
+frontmatter `keywords` 必须覆盖：
+
+- 模块名、常见别称、英文名或缩写
+- 最常拿来搜它的业务词或入口词
+- 只放 3-8 个判别词，不堆泛词
+
 ### troubles
 
 写：
@@ -136,6 +164,13 @@ frontmatter `description` 必须覆盖：
 | `trouble_knowledge` | `.repomind/troubles/*.md` |
 
 如果只是一次性上下文、纯代码显式信息或证据不足，归为 `discard`。
+
+在分拣完成后，先做一次“元数据总结”：
+
+- 哪些文档的 `description` 应该重写或收紧
+- 哪些模块文档的 `keywords` 应该新增、删除或去重
+- 即使正文改动很小，只要索引入口词变了，也必须优先更新元数据
+- 如果本轮代码定位绕过了现有模块文档，也必须把“为什么没命中”“缺了什么关键词/入口词”总结到这里
 
 ## 步骤 5：更新知识文档
 
@@ -182,6 +217,7 @@ description: "高级用户身份概念。用于判断权益范围、典型触发
 - 有卡片 + 新增业务规则/边界/预期 → 合并
 - 只是实现调整 → 不更新正文，但说明原因
 - 如果卡片更新后适用场景或边界变化，必须同步改 `description`
+- 每次 summary 都要问一句：当前 `description` 是否仍能让模型在首轮路由时命中这张卡；如果不能，先改 `description`
 
 ### 5b：modules
 
@@ -191,6 +227,12 @@ description: "高级用户身份概念。用于判断权益范围、典型触发
 ---
 name: "支付模块"
 description: "支付与退款相关模块。用于定位下单、回调、补偿入口和改动影响面。"
+keywords:
+- "支付"
+- "payment"
+- "退款"
+- "refund"
+- "回调"
 ---
 
 # 支付模块
@@ -218,6 +260,14 @@ description: "支付与退款相关模块。用于定位下单、回调、补偿
 - 优先维护 `AI 注意事项`
 - 关键代码按文件路径去重；需要时再细到函数名
 - 如果模块职责、入口范围、影响面发生变化，frontmatter `description` 必须同步更新
+- 如果模块新增别称、核心入口词、常见搜索词或业务叫法变化，frontmatter `keywords` 必须同步更新
+- `description` 写不下的检索词，不要硬塞进句子，放进 `keywords`
+- `keywords` 以命中率为目标，不以完整性为目标；去掉噪音词，保留最能区分该模块的词
+- 如果本轮是靠直接源码/图谱搜索才找到该模块实现，必须反向补齐模块文档：
+  - 补入口文件/函数
+  - 补常见修改场景
+  - 补能帮助首轮命中的 `keywords`
+  - 如有必要，收紧 `description`
 
 ### 5c：troubles
 
@@ -283,6 +333,7 @@ rm -f .repomind/.query-findings.json
 目的是确认：
 
 - 所有新增/修改文档都暴露了正确的 `name` / `description`
+- 所有模块文档都暴露了当前有效的 `keywords`
 - 没有回写旧的集中式索引
 
 ## 步骤 7：输出摘要
@@ -293,6 +344,11 @@ rm -f .repomind/.query-findings.json
 - 哪些发现被写入，哪些被丢弃
 - concept/module/trouble 各自的更新动作
 - 哪些文档的 frontmatter 元数据被同步调整
+- 哪些模块关键词被新增、删除或去重
+- 如果本轮有绕过模块文档的直接代码查找，必须写明：
+  - 绕过了哪个模块或哪个缺口
+  - 本次补回了哪些入口信息
+  - 本次补回了哪些关键词
 
 建议格式：
 
@@ -313,4 +369,5 @@ rm -f .repomind/.query-findings.json
 ### 元数据同步
 - concepts/xxx.md：更新 description，补充适用场景
 - modules/yyy.md：更新 description，补充影响面
+- modules/yyy.md：更新 keywords，补充新的搜索词 / 别称 / 入口词
 ```

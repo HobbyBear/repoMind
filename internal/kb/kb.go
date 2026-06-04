@@ -25,9 +25,10 @@ const (
 )
 
 type MetadataEntry struct {
-	File        string `json:"file"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	File        string   `json:"file"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Keywords    []string `json:"keywords,omitempty"`
 }
 
 type MetadataIndex struct {
@@ -50,6 +51,7 @@ type formatState struct {
 type frontMatter struct {
 	Name        string
 	Description string
+	Keywords    []string
 }
 
 type legacyIndex struct {
@@ -179,6 +181,7 @@ func readMetadataDir(repomindDir string, kind Kind) ([]MetadataEntry, error) {
 			File:        filepath.ToSlash(filepath.Join(kind.dirName(), entry.Name())),
 			Name:        name,
 			Description: description,
+			Keywords:    normalizeKeywords(kind, name, entry.Name(), fm.Keywords),
 		})
 	}
 	return items, nil
@@ -214,7 +217,11 @@ func ensureLegacyModuleDocs(repomindDir string, legacyDescriptions map[string]st
 
 - 待补充
 `, name, description)
-		if err := fsutil.WriteFile(path, renderDocument(desc, name, body)); err != nil {
+		if err := fsutil.WriteFile(path, renderDocument(frontMatter{
+			Name:        name,
+			Description: desc,
+			Keywords:    normalizeKeywords(KindModule, name, fileName, nil),
+		}, body)); err != nil {
 			return err
 		}
 		result.Migrated = append(result.Migrated, filepath.ToSlash(filepath.Join(".repomind", KindModule.dirName(), fileName)))
@@ -257,10 +264,15 @@ func normalizeDir(repomindDir string, kind Kind, legacyDescriptions map[string]s
 			description = deriveDescription(kind, name, body, legacyDescription)
 		}
 
-		if hasFrontMatter && fm.Name == name && fm.Description == description {
+		keywords := normalizeKeywords(kind, name, entry.Name(), fm.Keywords)
+		if hasFrontMatter && fm.Name == name && fm.Description == description && sameStrings(fm.Keywords, keywords) {
 			continue
 		}
-		if err := fsutil.WriteFile(path, renderDocument(description, name, body)); err != nil {
+		if err := fsutil.WriteFile(path, renderDocument(frontMatter{
+			Name:        name,
+			Description: description,
+			Keywords:    keywords,
+		}, body)); err != nil {
 			return err
 		}
 		result.Migrated = append(result.Migrated, filepath.ToSlash(filepath.Join(".repomind", kind.dirName(), entry.Name())))
@@ -268,14 +280,22 @@ func normalizeDir(repomindDir string, kind Kind, legacyDescriptions map[string]s
 	return nil
 }
 
-func renderDocument(description, name, body string) string {
+func renderDocument(fm frontMatter, body string) string {
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 	body = strings.TrimLeft(body, "\n")
-	doc := fmt.Sprintf(`---
-name: %s
-description: %s
----
-`, strconv.Quote(cleanInline(name)), strconv.Quote(cleanInline(description)))
+	lines := []string{
+		"---",
+		"name: " + strconv.Quote(cleanInline(fm.Name)),
+		"description: " + strconv.Quote(cleanInline(fm.Description)),
+	}
+	if len(fm.Keywords) > 0 {
+		lines = append(lines, "keywords:")
+		for _, keyword := range fm.Keywords {
+			lines = append(lines, "- "+strconv.Quote(cleanInline(keyword)))
+		}
+	}
+	lines = append(lines, "---")
+	doc := strings.Join(lines, "\n") + "\n"
 	if body != "" {
 		doc += "\n" + body
 		if !strings.HasSuffix(doc, "\n") {
@@ -297,7 +317,19 @@ func splitFrontMatter(content string) (frontMatter, string, bool) {
 	}
 
 	var fm frontMatter
-	for _, line := range strings.Split(rest[:end], "\n") {
+	currentListKey := ""
+	for _, rawLine := range strings.Split(rest[:end], "\n") {
+		line := strings.TrimSpace(rawLine)
+		if currentListKey != "" {
+			if strings.HasPrefix(line, "- ") {
+				value := decodeScalar(strings.TrimSpace(strings.TrimPrefix(line, "- ")))
+				if currentListKey == "keywords" && cleanInline(value) != "" {
+					fm.Keywords = append(fm.Keywords, cleanInline(value))
+				}
+				continue
+			}
+			currentListKey = ""
+		}
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -313,10 +345,38 @@ func splitFrontMatter(content string) (frontMatter, string, bool) {
 			fm.Name = cleanInline(value)
 		case "description":
 			fm.Description = cleanInline(value)
+		case "keywords":
+			if value == "" {
+				currentListKey = "keywords"
+				continue
+			}
+			for _, keyword := range parseInlineKeywords(value) {
+				if cleanInline(keyword) != "" {
+					fm.Keywords = append(fm.Keywords, cleanInline(keyword))
+				}
+			}
 		}
 	}
 	body := rest[end+len("\n---\n"):]
 	return fm, body, true
+}
+
+func parseInlineKeywords(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "[")
+	raw = strings.TrimSuffix(raw, "]")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	keywords := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := decodeScalar(strings.TrimSpace(part))
+		if cleanInline(value) != "" {
+			keywords = append(keywords, cleanInline(value))
+		}
+	}
+	return keywords
 }
 
 func decodeScalar(raw string) string {
@@ -522,6 +582,39 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func normalizeKeywords(kind Kind, name, fileName string, existing []string) []string {
+	seen := make(map[string]bool)
+	keywords := make([]string, 0, len(existing)+2)
+	appendKeyword := func(value string) {
+		value = cleanInline(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		keywords = append(keywords, value)
+	}
+	for _, keyword := range existing {
+		appendKeyword(keyword)
+	}
+	if kind == KindModule {
+		appendKeyword(name)
+		appendKeyword(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
+	}
+	return keywords
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func removeIfExists(path string) bool {

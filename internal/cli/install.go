@@ -303,7 +303,7 @@ func repomindInstructionContent() string {
 - RepoMind 查出来的内容不是“参考一下就算了”，而是回答结论、修改决策、排查路径的凭证和上下文依据。
 - 命中的 concepts / modules / troubles / graphify 结果，必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
 - 如果 RepoMind 命中结果不足以支持结论，必须明确说“当前证据不足”，并继续补查代码或图谱。
-- RepoMind 当前采用每个 knowledge 文档 frontmatter 里的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 元数据做首轮路由，不依赖集中式 {{BT}}index.json{{BT}} 或目录 README。
+- RepoMind 当前采用每个 knowledge 文档 frontmatter 里的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 元数据做首轮路由；其中 {{BT}}description{{BT}} 是首要索引摘要，模块文档还要额外维护 {{BT}}keywords{{BT}} 作为辅助定位词，不依赖集中式 {{BT}}index.json{{BT}} 或目录 README。
 
 ## repomind-query 触发时机
 
@@ -316,12 +316,13 @@ func repomindInstructionContent() string {
 
 ## repomind-query 使用要求
 
-1. 先查知识库元数据，再按命中打开 concepts / modules / troubles / graphify。
+1. 先查知识库元数据，再按命中打开 concepts / modules / troubles / graphify；模块路由要同时参考 {{BT}}name{{BT}} / {{BT}}keywords{{BT}} / {{BT}}description{{BT}}。
 2. 最终回答必须基于命中的知识组织，而不是把检索结果放在一边。
 3. 如果命中了业务卡片，回答里要体现业务定义、边界或预期。
 4. 如果命中了模块文档，回答或改动方案里要体现关键入口、影响范围或注意事项。
 5. 如果命中了排查记录，回答里要体现历史现象、判断顺序或常见根因。
 6. 如果命中内容和当前代码冲突，以当前代码为准，并明确指出冲突。
+7. 如果本轮代码定位不是直接通过现有模块文档完成，而是绕过模块文档去查 graphify / source / {{BT}}rg{{BT}} 才定位到实现，那么本轮结束前必须触发 {{BT}}repomind-summary{{BT}}，把缺失的入口信息或模块关键词补回 RepoMind。
 
 ## repomind-summary 触发时机
 
@@ -331,13 +332,16 @@ func repomindInstructionContent() string {
 2. 问答完成后，只要形成了可复用的新业务知识、模块知识或排查经验。
 3. 业务讨论、需求分析、PRD 同步后，只要确认了新的概念边界、规则、历史原因或业务意图。
 4. 排查结束后，只要形成了可复用的现象、判断路径、根因、验证方式或修订结论。
+5. 本轮存在绕过现有模块文档的直接代码查找时，即使最后只补入口或关键词，也必须触发。
+6. 本轮识别出某个模块应新增、删除或收紧 {{BT}}keywords{{BT}} 时，也必须触发。
 
 ## repomind-summary 使用要求
 
 1. 先做 summary gate，再决定是否落库。
 2. 只沉淀代码不容易直接看出的知识，不重复写显式源码细节。
-3. 更新正文时，同时检查对应 knowledge 文档的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 是否还适合作为后续路由依据。
+3. summary 时先维护索引元数据，再维护正文；优先检查 {{BT}}description{{BT}} 是否还适合作为首轮路由摘要，模块文档还要同步检查 {{BT}}keywords{{BT}} 是否覆盖最新别称、入口词和常见搜索词。
 4. 发现新知识后不要拖到以后；本轮结束前就闭环到 RepoMind。
+5. 如果本轮通过直接代码查找才找到答案，至少要把“缺失的模块入口 / 新增关键词 / 应补的常见修改场景”总结回 RepoMind。
 `
 	return strings.TrimSpace(strings.ReplaceAll(raw, "{{BT}}", "`"))
 }
