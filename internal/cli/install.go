@@ -38,7 +38,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	dirs := []string{
 		filepath.Join(repomindDir, "modules"),
-		filepath.Join(repomindDir, "glossary"),
+		filepath.Join(repomindDir, "concepts"),
 		filepath.Join(repomindDir, "graph"),
 		filepath.Join(repomindDir, "bin"),
 	}
@@ -65,18 +65,17 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// glossary/README.md
-	if err := fsutil.WriteFile(filepath.Join(repomindDir, "glossary", "README.md"), `# RepoMind Glossary Cards
+	// concepts/README.md
+	if err := fsutil.WriteFile(filepath.Join(repomindDir, "concepts", "README.md"), `# RepoMind 业务概念卡片
 
-此目录存放业务语义卡片。
+此目录存放业务概念卡片。
 
-每个文件记录一个业务概念：
+每个卡片记录一个业务概念：
 - 是什么
 - 为什么有
 - 用户可见表现
-- 核心规则/边界
+- 核心规则与边界
 - 易混淆概念
-- 主模块与关联模块
 
 这里不记录源码里 30 秒内能直接看出来的内容。
 只沉淀代码不容易直接表达的业务语义、隐性约束、历史原因和排查经验。
@@ -160,7 +159,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(".repomind/")
 	fmt.Println("  index.json")
-	fmt.Println("  glossary/")
+	fmt.Println("  concepts/")
 	fmt.Println("  modules/")
 	fmt.Println("  graph/")
 	fmt.Println("  bin/repomind-internal")
@@ -300,7 +299,7 @@ func ensureGraphifyGitignore(projectRoot string) error {
 func ensureRepomindGitignore(projectRoot string) error {
 	gitignore := `# RepoMind 知识库文件 —— 必须被 git 跟踪
 !index.json
-!glossary/**
+!concepts/**
 !modules/**
 !bin/repomind-internal
 !bin/repomind-internal.exe
@@ -332,7 +331,7 @@ func ensureAgentInstructions(projectRoot string) error {
 
 	### 编辑/修改代码前
 	1. 必须先执行 ` + bt + `repomind-query` + bt + ` skill 查找相关模块
-	2. 如用户在问“某个业务概念是什么/为什么存在/和什么容易混淆”，优先查 ` + bt + `.repomind/glossary/` + bt + ` 业务卡片
+	2. 如用户在问“某个业务概念是什么/为什么存在/和什么容易混淆”，优先查 ` + bt + `.repomind/concepts/` + bt + ` 业务卡片
 	3. 理解业务上下文后再动手
 
 	### 编码完成后

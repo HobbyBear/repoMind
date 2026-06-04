@@ -41,7 +41,7 @@ repomind install
 
 安装后无需手动操作，AI 编码助手自动执行：
 
-- **编码前（概念问题）** — `repomind-query`：优先查 `.repomind/glossary/` 业务卡片
+- **编码前（概念问题）** — `repomind-query`：优先查 `.repomind/concepts/` 业务卡片
 - **编码前（代码问题）** — `repomind-query`：读取知识库索引 → 匹配业务模块 → 定位关键代码
 - **编码后** — `repomind-summary`：分析变更影响 → 更新业务卡片、模块文档和索引
 
@@ -75,7 +75,7 @@ RepoMind — 业务知识库
 
 - 输入：graphify 的图谱 + 开发者对业务的理解
 - 输出：
-  - `.repomind/glossary/*.md`（业务卡片：定义、目的、边界、混淆点）
+  - `.repomind/concepts/*.md`（业务卡片：定义、目的、边界、混淆点）
   - `.repomind/modules/*.md`（模块文档：关键代码、修改场景、注意事项）
   - `index.json`（关键词索引，快速定位）
 
@@ -85,7 +85,7 @@ RepoMind — 业务知识库
 |------|----------|----------|
 | 定位 | 代码结构分析引擎 | 业务知识库 |
 | 输入 | 源码目录 | Graphify 图谱 + 开发者业务理解 |
-| 输出 | graphify-out/graph.json（节点图 + 社区发现） | .repomind/glossary/*.md + .repomind/modules/*.md + index.json |
+| 输出 | graphify-out/graph.json（节点图 + 社区发现） | .repomind/concepts/*.md + .repomind/modules/*.md + index.json |
 | 回答的问题 | 代码在技术上是怎样组织的？ | 这个概念是什么？这个模块是干什么的？改它要注意什么？ |
 | 更新方式 | graphify CLI 手动运行 | AI skill 编码前后自动更新 |
 | 类比 | 建筑的结构图纸（承重墙在哪、管道怎么走） | 房间功能说明（这是厨房、插座在这里、注意地面防水） |
