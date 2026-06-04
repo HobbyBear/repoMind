@@ -44,6 +44,7 @@ repomind install
 - **编码前（概念问题）** — `repomind-query`：优先查 `.repomind/concepts/` 业务卡片
 - **编码前（代码问题）** — `repomind-query`：读取知识库索引 → 匹配业务模块 → 定位关键代码
 - **编码后** — `repomind-summary`：分析变更影响 → 更新业务卡片、模块文档和索引
+- **PRD 处理** — `repomind-prd`：从需求文档提取业务概念，沉淀到知识库
 
 首次在项目中安装后，知识库为空，需要初始化：
 

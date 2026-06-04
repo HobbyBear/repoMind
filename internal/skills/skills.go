@@ -6,7 +6,7 @@ import (
 	"path"
 )
 
-//go:embed repomind-query/SKILL.md repomind-summary/SKILL.md repomind-init/SKILL.md
+//go:embed repomind-query/SKILL.md repomind-summary/SKILL.md repomind-init/SKILL.md repomind-prd/SKILL.md
 var skillFiles embed.FS
 
 func InstallSkills(repoRoot string) error {
