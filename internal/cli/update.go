@@ -117,13 +117,13 @@ func runUpdateWindows(tmpPath, exePath string) error {
 	batContent := fmt.Sprintf(`@echo off
 chcp 65001 >nul
 echo RepoMind updating...
-:: Rename running exe, then copy (avoids input-redirection on headless consoles)
+REM Rename running exe, then copy
 ren "%s" "%s.old"
 if exist "%s.old" (
     copy /Y "%s" "%s" >nul
     del "%s.old"
 ) else (
-    :: Fallback for network drives etc
+    REM fallback: copy over running exe
     copy /Y "%s" "%s" >nul
 )
 del "%s"
