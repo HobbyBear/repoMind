@@ -210,6 +210,12 @@ JSONEOF
 Skill: repomind-summary
 ```
 
+这里同样是**同步阻塞步骤**：
+
+- 不要输出“summary 已经在跑”然后继续回答用户
+- 必须等 `repomind-summary` 真正完成后，再结束 PRD 流程
+- 如果当前平台不支持在 skill 内再次显式调用 skill，就在当前流程中直接执行 `repomind-summary` 的步骤，不要只写一句移交说明
+
 这里的 summary 负责：
 
 - 判断是否还需要同步模块文档

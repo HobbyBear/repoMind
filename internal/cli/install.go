@@ -323,6 +323,7 @@ func repomindInstructionContent() string {
 5. 如果命中了排查记录，回答里要体现历史现象、判断顺序或常见根因。
 6. 如果命中内容和当前代码冲突，以当前代码为准，并明确指出冲突。
 7. 如果本轮代码定位不是直接通过现有模块文档完成，而是绕过模块文档去查 graphify / source / {{BT}}rg{{BT}} 才定位到实现，那么本轮结束前必须触发 {{BT}}repomind-summary{{BT}}，把缺失的入口信息或模块关键词补回 RepoMind。
+8. {{BT}}repomind-summary{{BT}} 是同步阻塞步骤：不要说“summary 正在运行”就继续回答；必须等它真正完成。如果当前平台不能显式嵌套调用 skill，就在当前流程里直接执行 summary 步骤。
 
 ## repomind-summary 触发时机
 
@@ -342,6 +343,7 @@ func repomindInstructionContent() string {
 3. summary 时先维护索引元数据，再维护正文；优先检查 {{BT}}description{{BT}} 是否还适合作为首轮路由摘要，模块文档还要同步检查 {{BT}}keywords{{BT}} 是否覆盖最新别称、入口词和常见搜索词。
 4. 发现新知识后不要拖到以后；本轮结束前就闭环到 RepoMind。
 5. 如果本轮通过直接代码查找才找到答案，至少要把“缺失的模块入口 / 新增关键词 / 应补的常见修改场景”总结回 RepoMind。
+6. 不允许把 summary 描述成后台任务；只有在 summary 完成或明确判定无需更新之后，才能给用户最终答复。
 `
 	return strings.TrimSpace(strings.ReplaceAll(raw, "{{BT}}", "`"))
 }

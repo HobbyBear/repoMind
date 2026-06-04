@@ -251,6 +251,13 @@ JSONEOF
 Skill: repomind-summary
 ```
 
+这是一个**同步阻塞步骤**，不是后台任务。
+
+- 不要输出“summary skill is running”“let me wait for it”“它会自己处理”之类的话
+- 不要在 `repomind-summary` 完成前就回到主回答
+- 必须等 summary 真正执行完、知识库更新或明确判定“无需更新”后，才能给用户最终回复
+- 如果当前平台无法在 skill 内再次显式调用 skill，就在当前流程里直接执行 `repomind-summary` 的完整步骤，而不是口头移交
+
 ## 步骤 8：持续发现
 
 对话过程中如果又出现了新的业务语义、模块边界或排查经验：
