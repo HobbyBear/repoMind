@@ -12,6 +12,7 @@ import (
 
 	"repomind/internal/fsutil"
 	"repomind/internal/gitutil"
+	"repomind/internal/kb"
 	"repomind/internal/skills"
 
 	"github.com/spf13/cobra"
@@ -151,7 +152,7 @@ cd /d "%s"
 }
 
 // syncProject refreshes embedded skills and internal binary in a project.
-// Does not touch modules, index.json, graph data, git config, or CLAUDE.md.
+// Preserves knowledge content while normalizing it to the current metadata format.
 func syncProject(projectRoot string) error {
 	repomindDir := filepath.Join(projectRoot, ".repomind")
 
@@ -164,6 +165,11 @@ func syncProject(projectRoot string) error {
 		return fmt.Errorf("internal binary: %w", err)
 	}
 	fmt.Println("Refreshed internal binary")
+
+	if _, err := kb.Migrate(projectRoot); err != nil {
+		return fmt.Errorf("knowledge base migration: %w", err)
+	}
+	fmt.Println("Normalized knowledge metadata")
 
 	if err := ensureRepomindGitignore(projectRoot); err != nil {
 		return fmt.Errorf("repomind gitignore: %w", err)
@@ -180,7 +186,7 @@ func syncProject(projectRoot string) error {
 	gitRoot, _ := gitutil.GitRoot()
 	stageAll(gitRoot, projectRoot)
 
-	fmt.Println("Sync complete. Modules and index.json were preserved.")
+	fmt.Println("Sync complete. Knowledge docs were preserved and migrated if needed.")
 	return nil
 }
 

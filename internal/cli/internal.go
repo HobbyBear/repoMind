@@ -14,6 +14,8 @@ import (
 func InternalCmds() []*cobra.Command {
 	return []*cobra.Command{
 		graphScanCmd(),
+		kbMigrateCmd(),
+		kbMetadataCmd(),
 		syncProjectCmd(),
 	}
 }

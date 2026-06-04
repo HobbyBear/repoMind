@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"repomind/internal/fsutil"
 	"repomind/internal/gitutil"
 	"repomind/internal/graph"
+	"repomind/internal/kb"
 	"repomind/internal/skills"
 
 	"github.com/spf13/cobra"
@@ -39,6 +39,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	dirs := []string{
 		filepath.Join(repomindDir, "modules"),
 		filepath.Join(repomindDir, "concepts"),
+		filepath.Join(repomindDir, "troubles"),
 		filepath.Join(repomindDir, "graph"),
 		filepath.Join(repomindDir, "bin"),
 	}
@@ -48,67 +49,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// modules/README.md
-	if err := fsutil.WriteFile(filepath.Join(repomindDir, "modules", "README.md"), `# RepoMind Modules
-
-此目录存放业务模块文档。
-
-每个文件记录一个业务模块：
-- 业务描述
-- 关键代码入口
-- 常见修改场景
-- AI 注意事项
-
-这些文档由 AI skill（Claude Code / Codex）创建和维护。
-除非你清楚自己在做什么，否则不要手动编辑。
-`); err != nil {
-		return err
-	}
-
-	// concepts/README.md
-	if err := fsutil.WriteFile(filepath.Join(repomindDir, "concepts", "README.md"), `# RepoMind 业务概念卡片
-
-此目录存放业务概念卡片。
-
-每个卡片记录一个业务概念：
-- 是什么
-- 为什么有
-- 用户可见表现
-- 核心规则与边界
-- 易混淆概念
-
-这里不记录源码里 30 秒内能直接看出来的内容。
-只沉淀代码不容易直接表达的业务语义、隐性约束、历史原因和排查经验。
-
-这些卡片由 AI skill（Claude Code / Codex）创建和维护。
-除非你清楚自己在做什么，否则不要手动编辑。
-`); err != nil {
-		return err
-	}
-
-	// graph summary (run before index.json merge so we have candidates)
+	// graph summary
 	summary, _ := graph.GraphScan(projectRoot, filepath.Join(repomindDir, "graph"))
 	if summary == nil {
 		summary = &graph.Summary{Mode: "fallback"}
 	}
 	if err := graph.WriteSummary(filepath.Join(repomindDir, "graph"), summary); err != nil {
-		return err
-	}
-
-	// index.json — merge with existing, never destroy
-	idxPath := filepath.Join(repomindDir, "index.json")
-	var existing []moduleEntry
-	if data, err := os.ReadFile(idxPath); err == nil {
-		var idx struct {
-			Modules []moduleEntry `json:"modules"`
-		}
-		if json.Unmarshal(data, &idx) == nil {
-			existing = idx.Modules
-		}
-	}
-	merged := mergeModules(existing, summary.ModuleCandidates)
-	idxData, _ := json.MarshalIndent(map[string]interface{}{"modules": merged}, "", "  ")
-	if err := fsutil.WriteFile(idxPath, string(idxData)+"\n"); err != nil {
 		return err
 	}
 
@@ -135,6 +81,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to copy internal tool: %w", err)
 	}
 
+	if _, err := kb.Migrate(projectRoot); err != nil {
+		return fmt.Errorf("knowledge base migration: %w", err)
+	}
+
 	// git-level config (uses git root, not project root)
 	if err := ensureGitAttributes(gitRoot, projectRoot); err != nil {
 		return fmt.Errorf("gitattributes: %w", err)
@@ -158,9 +108,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("RepoMind installed.")
 	fmt.Println()
 	fmt.Println(".repomind/")
-	fmt.Println("  index.json")
+	fmt.Println("  .kb-format.json")
 	fmt.Println("  concepts/")
 	fmt.Println("  modules/")
+	fmt.Println("  troubles/")
 	fmt.Println("  graph/")
 	fmt.Println("  bin/repomind-internal")
 	fmt.Println()
@@ -183,6 +134,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
 	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
 	fmt.Println()
+	fmt.Println("知识路由已切换为每个 concepts/modules/troubles 文档自己的 name/description 元数据。")
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
 	return nil
@@ -258,6 +210,7 @@ func stageAll(gitRoot, projectRoot string) {
 		".claude",
 		".codex",
 		"graphify-out",
+		"AGENTS.md",
 	}
 	for _, p := range projectPaths {
 		abs := filepath.Join(projectRoot, p)
@@ -300,11 +253,18 @@ func ensureGraphifyGitignore(projectRoot string) error {
 // base files are guaranteed to be tracked by git.
 func ensureRepomindGitignore(projectRoot string) error {
 	gitignore := `# RepoMind 知识库文件 —— 必须被 git 跟踪
-!index.json
+!.kb-format.json
 !concepts/**
 !modules/**
+!troubles/**
 !bin/repomind-internal
 !bin/repomind-internal.exe
+
+# Legacy central index files are obsolete.
+index.json
+concepts/README.md
+modules/README.md
+troubles/README.md
 `
 	return os.WriteFile(filepath.Join(projectRoot, ".repomind", ".gitignore"), []byte(gitignore), 0644)
 }
@@ -313,47 +273,10 @@ func ensureRepomindGitignore(projectRoot string) error {
 // reads the knowledge base before editing business code.
 //
 // Claude Code: uses .claude/rules/repomind.md (cleanly separated, no conflicts
-// with other plugins).  Codex: appends to AGENTS.md (Codex does not have a
-// rules directory equivalent).
+// with other plugins). Codex: replaces only the managed RepoMind block in
+// AGENTS.md (Codex does not have a rules directory equivalent).
 func ensureAgentInstructions(projectRoot string) error {
-	bt := "`"
-
-	content := `# RepoMind — 代码问答与编码的优先知识库
-
-	## 核心原则
-	**任何涉及代码、业务逻辑、项目结构的问题，都必须先查 RepoMind 知识库再回答。**
-	回答后如有新发现，自动更新知识库。
-
-	## 自动触发规则
-
-	### 当你问代码/业务问题时
-	1. 我**自动调用 ` + bt + `repomind-query` + bt + `** 查询知识库
-	2. ` + bt + `repomind-query` + bt + ` 内部自动完成全流程：查知识库 → 找代码 → 保存发现 → 如有新知识自动调用 ` + bt + `repomind-summary` + bt + ` 更新知识库
-	3. 回到主流程后回答用户
-
-	### 编辑/修改代码前
-	1. 必须先执行 ` + bt + `repomind-query` + bt + ` skill 查找相关模块
-	2. 如用户在问“某个业务概念是什么/为什么存在/和什么容易混淆”，优先查 ` + bt + `.repomind/concepts/` + bt + ` 业务卡片
-	3. 理解业务上下文后再动手
-
-	### 编码完成后
-	1. 必须执行 ` + bt + `repomind-summary` + bt + ` skill 更新知识库
-	2. 包括 graphify 增量更新、业务卡片更新、模块文档更新、index.json 同步
-
-	### 排查 Bug 时
-	1. 先执行 ` + bt + `repomind-query` + bt + ` skill 理解相关业务上下文
-	2. 再定位问题
-
-	### 业务讨论/排查/需求分析过程中（新增——全场景覆盖）
-	**不限场景，只要在对话中发现了以下内容，必须在对话结束前执行 ` + bt + `repomind-summary` + bt + ` 更新知识库：**
-	1. **业务语义/概念边界** — 某个业务概念是什么、为什么存在、和什么容易混淆
-	2. **业务规则/边界条件** — 关键判断逻辑、历史原因、遗留问题（如某个函数只查某张表不查另一张的原因）
-	3. **代码演进历史** — 同一函数在不同版本的 Bug 和修复记录
-	4. **排查关键路径** — 特定的 SQL 查询组合、日志特征、判断链条
-	**规则：** 只记录代码不容易直接看出的知识；代码中一眼可见的函数逻辑、SQL、表字段不要重复写入。
-	只要有上述任何一种知识被确认是知识库里没有的，就必须闭环。
-	不需要等待「编码完成后」，也不需要依赖 ` + "`new_findings`" + ` 发现标记。
-	`
+	content := repomindInstructionContent()
 
 	// --- Claude Code: .claude/rules/repomind.md ---
 	// Always overwrite — this file is fully managed by RepoMind.
@@ -365,24 +288,88 @@ func ensureAgentInstructions(projectRoot string) error {
 		return err
 	}
 
-	// --- Codex: AGENTS.md (append) ---
+	// --- Codex: AGENTS.md (managed block replace) ---
 	agentsPath := filepath.Join(projectRoot, "AGENTS.md")
-	if fsutil.Exists(agentsPath) {
-		data, err := os.ReadFile(agentsPath)
+	return upsertManagedBlock(agentsPath, "<!-- repomind-start -->", "<!-- repomind-end -->", content)
+}
+
+func repomindInstructionContent() string {
+	raw := `
+# RepoMind — 代码问答与编码的优先知识库
+
+## 核心原则
+
+- 任何涉及代码、业务逻辑、项目结构、异常排查，需求分析，方案设计的问题，都必须先查 RepoMind，再回答或改代码。
+- RepoMind 查出来的内容不是“参考一下就算了”，而是回答结论、修改决策、排查路径的凭证和上下文依据。
+- 命中的 concepts / modules / troubles / graphify 结果，必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
+- 如果 RepoMind 命中结果不足以支持结论，必须明确说“当前证据不足”，并继续补查代码或图谱。
+- RepoMind 当前采用每个 knowledge 文档 frontmatter 里的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 元数据做首轮路由，不依赖集中式 {{BT}}index.json{{BT}} 或目录 README。
+
+## repomind-query 触发时机
+
+以下场景必须先触发 {{BT}}repomind-query{{BT}}：
+
+1. 用户询问业务概念、业务规则、项目结构、代码定位、异常现象时。
+2. 准备编辑或修改业务代码前。
+3. 排查 Bug、分析“为什么没生效 / 为什么不对 / 是不是 Bug”时。
+4. 处理历史 PRD 前，如果需要先理解现有业务知识和模块上下文。
+
+## repomind-query 使用要求
+
+1. 先查知识库元数据，再按命中打开 concepts / modules / troubles / graphify。
+2. 最终回答必须基于命中的知识组织，而不是把检索结果放在一边。
+3. 如果命中了业务卡片，回答里要体现业务定义、边界或预期。
+4. 如果命中了模块文档，回答或改动方案里要体现关键入口、影响范围或注意事项。
+5. 如果命中了排查记录，回答里要体现历史现象、判断顺序或常见根因。
+6. 如果命中内容和当前代码冲突，以当前代码为准，并明确指出冲突。
+
+## repomind-summary 触发时机
+
+以下场景必须触发 {{BT}}repomind-summary{{BT}}：
+
+1. 代码修改完成后，只要改动影响业务语义、模块边界、关键入口、排查路径或文档元数据。
+2. 问答完成后，只要形成了可复用的新业务知识、模块知识或排查经验。
+3. 业务讨论、需求分析、PRD 同步后，只要确认了新的概念边界、规则、历史原因或业务意图。
+4. 排查结束后，只要形成了可复用的现象、判断路径、根因、验证方式或修订结论。
+
+## repomind-summary 使用要求
+
+1. 先做 summary gate，再决定是否落库。
+2. 只沉淀代码不容易直接看出的知识，不重复写显式源码细节。
+3. 更新正文时，同时检查对应 knowledge 文档的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 是否还适合作为后续路由依据。
+4. 发现新知识后不要拖到以后；本轮结束前就闭环到 RepoMind。
+`
+	return strings.TrimSpace(strings.ReplaceAll(raw, "{{BT}}", "`"))
+}
+
+func upsertManagedBlock(path, startMarker, endMarker, content string) error {
+	block := fmt.Sprintf("%s\n\n%s\n\n%s\n", startMarker, strings.TrimSpace(content), endMarker)
+
+	existing := ""
+	if fsutil.Exists(path) {
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(data), "repomind-query") {
-			return nil
-		}
+		existing = string(data)
 	}
-	f, err := os.OpenFile(agentsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
+
+	start := strings.Index(existing, startMarker)
+	end := strings.Index(existing, endMarker)
+	switch {
+	case start != -1 && end != -1 && end > start:
+		existing = strings.TrimRight(existing[:start]+existing[end+len(endMarker):], "\n")
+	case start != -1:
+		existing = strings.TrimRight(existing[:start], "\n")
+	default:
+		existing = strings.TrimRight(existing, "\n")
 	}
-	defer f.Close()
-	_, err = fmt.Fprintf(f, "\n\n<!-- repomind-start -->\n\n%s\n\n<!-- repomind-end -->\n", strings.TrimSpace(content))
-	return err
+
+	final := block
+	if strings.TrimSpace(existing) != "" {
+		final = existing + "\n\n" + block
+	}
+	return os.WriteFile(path, []byte(final), 0644)
 }
 
 func InternalInstallCmd() *cobra.Command {
@@ -585,37 +572,6 @@ func cleanRepomindSection(path string) {
 	}
 	os.WriteFile(path, []byte(cleaned+"\n"), 0644)
 	fmt.Printf("Cleaned %s\n", filepath.Base(path))
-}
-
-// ensureGraphifyCLI checks for graphify, installs via pip if missing, and
-// deploys graphify skills to both Claude Code and Codex directories.
-
-type moduleEntry struct {
-	File        string   `json:"file"`
-	Description string   `json:"description"`
-	Keywords    []string `json:"keywords"`
-}
-
-// mergeModules merges existing index.json entries with new graph-scan candidates.
-// Existing modules are preserved; new candidates are added if not already present.
-func mergeModules(existing []moduleEntry, candidates []graph.ModuleCandidate) []moduleEntry {
-	seen := make(map[string]bool)
-	for _, m := range existing {
-		seen[m.File] = true
-	}
-	for _, c := range candidates {
-		name := c.Name + ".md"
-		if seen[name] {
-			continue
-		}
-		existing = append(existing, moduleEntry{
-			File:        name,
-			Description: name + " — TODO: 补充业务描述",
-			Keywords:    []string{c.Name},
-		})
-		seen[name] = true
-	}
-	return existing
 }
 
 func ensureGraphifyCLI() {

@@ -1,0 +1,3 @@
+interface:
+  display_name: "RepoMind Summary"
+  short_description: "Persist reusable business, module, and trouble findings back into RepoMind"
