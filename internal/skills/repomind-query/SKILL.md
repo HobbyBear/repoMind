@@ -85,6 +85,20 @@ description: 查阅任何代码/业务逻辑时优先自动触发，查询 RepoM
 
 读匹配到的 `.repomind/modules/<file>`，获取详细业务上下文、关键代码、修改场景和 AI 注意事项。
 
+### 4b.5：排查记录查档（troubles 目录）
+
+**如果是排查类问题（数据不一致、功能没生效、Bug），必须执行此步骤。**
+
+读取 `.repomind/troubles/README.md` 确认目录格式，然后扫描 `.repomind/troubles/*.md`（排除 README.md），
+根据关键词匹配历史排查记录。如果命中了相似问题，直接引用排查路径。
+
+**什么时候应该查 troubles：**
+- **问题明确是"数据不对"、"没生效"、"报错了"、"和预期不符"** → 优先查，可能有现成排查路径
+- **问题涉及两端数据对不上**（如列表 A 和列表 B 数字不同）→ 必查，常见数据类型
+- **纯问业务概念是什么** → 不用查，先看 concepts 卡片
+
+**一句话：只要你在动手 grep/查表之前，先看一眼有没有前人踩过同一坑。**
+
 ### 4c：按需使用 graphify skill
 
 graphify 提供 concepts + modules + index 无法替代的能力：**实时从 AST 查调用链、定位函数定义、追踪跨模块依赖。**
@@ -129,6 +143,7 @@ graphify 提供 concepts + modules + index 无法替代的能力：**实时从 A
 | index.json + modules | ✅/❌ | 匹配到了哪些模块 |
 | graphify query | ✅/❌/跳过 | 查了什么、找到了什么 |
 | grep/搜索源码 | ✅/❌/跳过 | 原因：graphify 无法定位精确代码/无 graphify/其他 |
+| troubles 排查记录 | ✅/❌/跳过 | 命中了哪条排查记录/未命中/非排查类问题跳过 |
 
 ### 业务卡片命中
 - 概念：...
@@ -154,7 +169,7 @@ graphify 提供 concepts + modules + index 无法替代的能力：**实时从 A
 
 ## 步骤 6：保存查询发现
 
-将本次查询中**超出已有知识库的新发现**（业务概念、业务规则、模块边界更新）写入临时文件，自动触发后续知识库更新：
+将本次查询中**超出已有知识库的新发现**（业务概念、业务规则、模块边界更新、排查记录）写入临时文件，自动触发后续知识库更新：
 
 **自动判定规则：**
 - `new_findings` 数组**不为空** → `needs_summary: true`（有新知识需要同步）
@@ -168,7 +183,7 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
   "known_modules": ["已命中模块名"],
   "new_findings": [
     {
-      "type": "new_business_card|new_business_rule|module_update",
+      "type": "new_business_card|new_business_rule|module_update|trouble_record",
       "module": "主模块名",
       "file": "concepts/xxx.md 或路径",
       "content": "发现描述"

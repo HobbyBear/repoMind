@@ -33,7 +33,7 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
   "known_modules": ["涉及模块"],
   "new_findings": [
     {
-      "type": "new_business_rule|new_code_location|module_update",
+      "type": "new_business_rule|new_code_location|module_update|trouble_record",
       "module": "模块名",
       "file": "路径",
       "content": "发现描述"
@@ -263,6 +263,52 @@ git diff HEAD --name-only
 - 概念解释交给 `.repomind/concepts/*.md`
 - 如果某个词更适合回答“它是什么”，优先沉淀成业务卡片，不要勉强塞进模块 keywords
 
+### 4b.5：排查记录写入（trouble_record 类型）
+
+如果 `new_findings` 中存在 `type: "trouble_record"` 的条目，执行以下流程：
+
+**1. 读取排查记录目录**
+
+```bash
+ls .repomind/troubles/ 2>/dev/null || mkdir -p .repomind/troubles/
+```
+
+**2. 创建或追加排查记录**
+
+每条 `trouble_record` 类型的发现，按以下模板在 `.repomind/troubles/` 下创建一个 `.md` 文件：
+
+```markdown
+# 排查：<标题>
+
+## 问题
+（现象描述）
+
+## 排查路径
+（分步骤列出）
+
+## 根因
+（最终定位到的原因）
+
+## 涉及模块
+- 模块名
+
+## 涉及表和字段
+- `表名.字段` — 用途
+
+## 关键代码位置
+- `文件.go:行号` — 函数/逻辑
+
+## 坑点
+- （下次容易忽略的细节）
+```
+
+**3. 文件名规则**
+- 用 kebab-case 英文短描述，例如 `data-inconsistency-chat-count.md`
+- 如果已有同名文件，追加「同类问题」小节，不要覆盖
+
+**4. 清理**
+- 写入完成后，从 `new_findings` 中移除已处理的 `trouble_record` 条目（但保留其他类型）
+
 ### 4c：清理临时文件
 
 ```bash
@@ -297,6 +343,9 @@ rm -f .repomind/.query-findings.json
 
 ### 影响的业务模块
 - ...
+
+### 排查记录
+- 新增 `.repomind/troubles/xxx.md` — 简要说明  
 
 ### index.json 同步
 - ...
