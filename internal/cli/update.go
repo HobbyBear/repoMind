@@ -117,7 +117,7 @@ func runUpdateWindows(tmpPath, exePath string) error {
 	batContent := fmt.Sprintf(`@echo off
 chcp 65001 >nul
 echo RepoMind updating...
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 copy /Y "%s" "%s" >nul
 del "%s"
 echo Update complete.
