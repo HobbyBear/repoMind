@@ -1,6 +1,6 @@
 ---
 name: repomind-summary
-description: 每次 AI 回答前的收尾阶段做轻量 summary gate 判断；只有发现可复用的新业务知识、用户纠错、手动要求记忆的经验、模块边界、排查经验或知识文档元数据变化时，才执行写入。按类型更新 concepts、modules、troubles 及每个文档自己的 name/description，避免回到集中式索引。
+description: 每次 AI 完成代码修改、问答或排查结论后，且最终答复前，必须同步做轻量 summary gate 判断；代码写完后也要自动进入 gate。只有发现可复用的新业务知识、用户纠错、手动要求记忆的经验、模块边界、排查经验或知识文档元数据变化时，才执行写入。按类型更新 concepts、modules、troubles 及每个文档自己的 name/description，避免回到集中式索引。
 metadata:
   short-description: 把可复用知识写回 RepoMind
 ---
@@ -10,6 +10,7 @@ metadata:
 **执行语义：本 skill 必须同步完成。**
 
 - 调用方不能把它当后台任务，也不能在它完成前先回复用户
+- AI 完成代码修改、生成文件、修复 bug 或跑完验证后，最终答复前也必须进入本 skill 的 summary gate
 - 如果调用方只是口头说“summary 正在运行”但没有真正执行到清理和摘要输出，这视为流程失败
 - 本 skill 完成的标志是：知识库更新/判定结束 + 清理 `.query-findings.json` + 输出 summary 摘要
 

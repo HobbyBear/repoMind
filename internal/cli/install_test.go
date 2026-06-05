@@ -58,6 +58,9 @@ func TestRepomindInstructionsRequireSummaryGateForCorrections(t *testing.T) {
 
 	for _, want := range []string{
 		"每次执行过 `repomind-query` 后，最终答复前都必须进入一次 `repomind-summary` 的 summary gate",
+		"每次完成代码修改、生成文件、修复 bug 或跑完验证后，最终答复前也必须进入一次 `repomind-summary` 的 summary gate",
+		"不能因为“只是写代码”就跳过 gate",
+		"每次代码修改、生成文件、修复 bug 或跑完验证后，最终答复前必须触发一次 summary gate",
 		"用户纠正 AI 或 RepoMind 的业务结论、模块判断或排查结论时",
 		"只要用户给出业务纠错或修订结论",
 		"用户明确要求沉淀知识时",

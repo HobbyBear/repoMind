@@ -327,14 +327,15 @@ func repomindInstructionContent() string {
 8. 如果本轮代码定位不是直接通过现有模块文档完成，而是绕过模块文档去查代码搜索 / graphify / source 才定位到实现，那么本轮结束前必须触发 {{BT}}repomind-summary{{BT}}，把缺失的入口信息或模块关键词补回 RepoMind。
 9. 只要用户给出业务纠错或修订结论，就必须把纠错内容写入 {{BT}}.repomind/.query-findings.json{{BT}}，并令 {{BT}}needs_summary = true{{BT}}。
 10. 每次执行过 {{BT}}repomind-query{{BT}} 后，最终答复前都必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；即使 gate 最终判定无需更新，也不能跳过 gate。
-11. {{BT}}repomind-summary{{BT}} 是同步阻塞步骤：不要说“summary 正在运行”就继续回答；必须等它真正完成。如果当前平台不能显式嵌套调用 skill，就在当前流程里直接执行 summary 步骤。
+11. 每次完成代码修改、生成文件、修复 bug 或跑完验证后，最终答复前也必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；不能因为“只是写代码”就跳过 gate。
+12. {{BT}}repomind-summary{{BT}} 是同步阻塞步骤：不要说“summary 正在运行”就继续回答；必须等它真正完成。如果当前平台不能显式嵌套调用 skill，就在当前流程里直接执行 summary 步骤。
 
 ## repomind-summary 触发时机
 
 以下场景必须触发 {{BT}}repomind-summary{{BT}}：
 
 1. 每次 {{BT}}repomind-query{{BT}} 完成后，最终答复前必须触发一次 summary gate；gate 可判定无需更新，但 gate 本身不能省略。
-2. 代码修改完成后，只要改动影响业务语义、模块边界、关键入口、排查路径或文档元数据。
+2. 每次代码修改、生成文件、修复 bug 或跑完验证后，最终答复前必须触发一次 summary gate；gate 可判定无需更新，但 gate 本身不能省略。
 3. 问答完成后，只要形成了可复用的新业务知识、模块知识或排查经验。
 4. 用户纠正业务事实、模块归属、入口位置、排查根因或历史结论时，例如“X 才是”“Y 错了”“不是 A，是 B”。
 5. 用户明确要求沉淀知识时，例如“记一下”“总结到知识库”“以后遇到这个要注意”“这个经验要沉淀”。
@@ -352,7 +353,8 @@ func repomindInstructionContent() string {
 5. 如果本轮通过直接代码查找才找到答案，至少要把“缺失的模块入口 / 新增关键词 / 应补的常见修改场景”总结回 RepoMind。
 6. 如果本轮是用户纠错，必须把旧说法、新说法、证据来源和影响范围写入对应 concept/module/trouble；不能只在对话里口头承认。
 7. 如果本轮是用户手动要求沉淀，必须判断它更像业务概念、模块修改经验还是排查经验，只写入 concepts/modules/troubles，不创建新的集中式导览或索引文档。
-8. 不允许把 summary 描述成后台任务；只有在 summary 完成或明确判定无需更新之后，才能给用户最终答复。
+8. 代码写完后的 summary gate 也必须同步完成；即使最终不写库，也要完成 gate 判定后再给用户最终答复。
+9. 不允许把 summary 描述成后台任务；只有在 summary 完成或明确判定无需更新之后，才能给用户最终答复。
 `
 	return strings.TrimSpace(strings.ReplaceAll(raw, "{{BT}}", "`"))
 }
