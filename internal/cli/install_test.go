@@ -52,3 +52,19 @@ func TestUpsertManagedBlockReplacesOnlyRepomindSection(t *testing.T) {
 		t.Fatalf("new managed block missing:\n%s", got)
 	}
 }
+
+func TestRepomindInstructionsRequireSummaryGateForCorrections(t *testing.T) {
+	content := repomindInstructionContent()
+
+	for _, want := range []string{
+		"每次执行过 `repomind-query` 后，最终答复前都必须进入一次 `repomind-summary` 的 summary gate",
+		"用户纠正 AI 或 RepoMind 的业务结论、模块判断或排查结论时",
+		"只要用户给出业务纠错或修订结论",
+		"用户明确要求沉淀知识时",
+		"不创建新的集中式导览或索引文档",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("repomind instructions missing %q:\n%s", want, content)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 ---
 name: repomind-query
-description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。先用每个 knowledge 文档的 name/description 元数据做 skill-style 路由，再按需打开 concepts、modules、troubles 和 graphify/source，回答后自动保存新发现供 repomind-summary 更新。
+description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。先用每个 knowledge 文档的 name/description 元数据做 skill-style 路由，再按需打开 concepts、modules、troubles 和 graphify/source，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
 metadata:
   short-description: 先查 RepoMind 再回答
 ---
@@ -17,6 +17,8 @@ metadata:
 2. 先读元数据，再决定打开哪些正文。
 3. 路由不依赖 `index.json` 或 README；优先依赖各知识文档自己的 `name` / `description`，其中 `modules` 还要额外使用 `keywords`。
 4. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
+5. 每次执行本流程后，最终答复前都必须进入 `repomind-summary` 的 summary gate；gate 可以判定无需更新，但不能省略。
+6. 用户纠正业务事实、模块归属、入口位置、排查根因或历史结论时，必须视为新发现并令 `needs_summary = true`。
 
 ## 知识源边界
 
@@ -109,6 +111,7 @@ frontmatter `description` 必须能回答：
 - 业务概念：是什么、为什么、边界、区别、预期
 - 代码模块：在哪改、入口在哪、影响哪些模块
 - 异常排查：为什么没生效、是不是 bug、怎么排查
+- 业务纠错：用户指出“X 才是”“Y 错了”“不是 A，是 B”，或推翻 AI / RepoMind 的旧结论
 
 回答前先做内部判断：
 
@@ -117,6 +120,7 @@ frontmatter `description` 必须能回答：
 | 业务概念 | ✅/❌ | 命中的业务词、预期、边界问题 |
 | 代码模块 | ✅/❌ | 改哪里、入口、调用链、影响范围 |
 | 异常排查 | ✅/❌ | 没生效、数据不一致、报错、异常 |
+| 业务纠错 | ✅/❌ | 用户明确修正事实、边界、模块归属、入口、根因或历史结论 |
 
 ## 步骤 3：先用元数据选文档，再打开正文
 
@@ -180,6 +184,7 @@ frontmatter `description` 必须能回答：
 | 业务概念 + 异常排查 | concepts → troubles → modules |
 | 代码模块 + 异常排查 | troubles → modules → graphify/source |
 | 三者都有 | concepts → troubles → modules → graphify/source |
+| 业务纠错 | 先定位被纠错的 concept/module/trouble → 当前代码或用户确认补证 → 保存修订发现 |
 
 不要为了覆盖率把整个知识库都读一遍。
 
@@ -242,10 +247,11 @@ JSONEOF
 - `new_findings` 为空时，`needs_summary` 必须为 `false`
 - 只要存在任何新知识，`needs_summary` 就必须为 `true`
 - 如果本轮发生了“绕过 module 文档、直接查代码/图谱才定位到实现”的情况，即使最后只补模块入口词或关键词，也必须令 `needs_summary = true`
+- 如果用户纠正了 AI 或 RepoMind 的业务事实、模块归属、入口位置、排查根因或历史结论，必须记录旧说法、新说法、证据来源和影响范围，并令 `needs_summary = true`
 
 ## 步骤 7：自动触发 summary
 
-如果 `needs_summary == true`，自动调用：
+每次执行本流程后，最终答复前都必须自动调用：
 
 ```text
 Skill: repomind-summary
@@ -255,7 +261,8 @@ Skill: repomind-summary
 
 - 不要输出“summary skill is running”“let me wait for it”“它会自己处理”之类的话
 - 不要在 `repomind-summary` 完成前就回到主回答
-- 必须等 summary 真正执行完、知识库更新或明确判定“无需更新”后，才能给用户最终回复
+- `needs_summary == true` 时，summary 必须处理 `.repomind/.query-findings.json`
+- `needs_summary == false` 或没有新发现时，也必须进入 summary gate，并等它明确判定“无需更新”后，才能给用户最终回复
 - 如果当前平台无法在 skill 内再次显式调用 skill，就在当前流程里直接执行 `repomind-summary` 的完整步骤，而不是口头移交
 
 ## 步骤 8：持续发现
@@ -272,5 +279,7 @@ Skill: repomind-summary
 - 模块文档缺入口
 - 模块关键词不够
 - 用户常用叫法没进 `keywords`
+- 用户纠正了旧业务结论、模块归属或排查根因
+- 用户明确要求“记一下 / 总结到知识库 / 以后遇到这个要注意 / 这个经验要沉淀”
 
-也同样要写入 `module_knowledge`，然后触发 `repomind-summary`。
+也同样要按类型写入 `concept_knowledge` / `module_knowledge` / `trouble_knowledge`，然后触发 `repomind-summary`。

@@ -44,7 +44,8 @@ repomind install
 
 - **编码前（概念问题）** — `repomind-query`：优先查 `.repomind/concepts/` 业务卡片
 - **编码前（代码问题）** — `repomind-query`：先读取每个 knowledge 文档的 `name/description` 元数据 → 匹配业务模块 → 定位关键代码
-- **编码后** — `repomind-summary`：分析变更影响 → 更新业务卡片、模块文档、排查记录和元数据
+- **回答 / 编码后** — `repomind-summary`：先执行轻量 summary gate；有新业务知识、用户纠错、变更影响或排查结论时，再更新业务卡片、模块文档、排查记录和元数据
+- **随手沉淀** — 用户说“记一下 / 总结到知识库 / 以后遇到这个要注意”时，`repomind-summary` 会按类型写入 concepts、modules 或 troubles
 - **PRD 处理** — `repomind-prd`：从需求文档提取业务概念，沉淀到知识库
 
 首次在项目中安装后，知识库为空，需要初始化：
