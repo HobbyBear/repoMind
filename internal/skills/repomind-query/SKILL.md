@@ -1,6 +1,6 @@
 ---
 name: repomind-query
-description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。先用每个 knowledge 文档的 name/description 元数据做 skill-style 路由，再按需打开 concepts、modules、troubles 和 graphify/source，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
+description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。先用每个 knowledge 文档的 name/description 元数据做 skill-style 路由，再按需打开 concepts、modules、troubles 和最小代码证据；代码定位优先使用模块文档入口和平台代码搜索小上下文，只有调用链、影响面或跨模块关系不足时才补查 graphify query/explain/path，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
 metadata:
   short-description: 先查 RepoMind 再回答
 ---
@@ -68,15 +68,22 @@ frontmatter `description` 必须能回答：
 - 这类问题的典型现象是什么
 - 首查方向是什么
 
-### graphify / source
+### 代码搜索 / graphify / 代码证据
 
-负责提供当前代码证据：
+负责提供当前代码事实，不承担业务解释，也不让 AI 自行推断完整调用图：
 
 - 文件/函数定义
-- 调用链
-- 当前实现行为
+- 代码搜索小上下文中的参数、返回值、分支条件、副作用
+- graphify 输出的结构关系，例如文件、函数、模块、社区、路径和显式边
 
-它只补证，不承担业务解释。
+查询阶段的主入口是 RepoMind 文档；平台代码搜索工具是代码定位主力，graphify 是关系补充，不是业务解释入口：
+
+- Claude Code 中使用 Grep 定位文件/行，再用 Read 读取命中行附近的最小片段；Codex/终端中使用 `rg -n -C 3`。
+- 模块文档命中并且代码搜索小上下文已经足以回答或修改时，不要继续大量读源码；否则模块文档的入口映射就失去意义。
+- 只有需要调用链、影响面、跨模块关系，或代码搜索只能找到零散候选但无法判断关系时，才补查 graphify。
+- graphify 查询必须带预算，优先小预算定位，避免把图谱结果当成全文背景塞进上下文。
+- 不得把少量源码片段中看到的调用关系说成完整 callers / callees；只有 graphify 明确输出，或当前打开文件中直接出现的调用，才能作为调用证据，并标明是否非穷尽。
+- `.repomind/graph/summary.json` 是初始化阶段的模块候选摘要，不作为 query 阶段的默认检索入口；除非当前流程已经打开了它，否则不要为回答用户问题专门读取它。
 
 ## 步骤 0：先修正旧格式
 
@@ -139,7 +146,7 @@ frontmatter `description` 必须能回答：
 1. 先用问题里的业务域、改动意图、接口/模块名与 `modules[].name/keywords/description` 匹配。
 2. 只打开最相关的 1-3 份模块文档。
 3. 从正文提炼关键入口、修改场景、AI 注意事项。
-4. 如果模块文档已给出具体入口，再去 graphify/source 验证当前实现。
+4. 如果模块文档已给出具体入口，先用平台代码搜索工具对入口名、函数名、接口名或业务关键词做小上下文验证；上下文足够时停止扩展读取。
 
 ### 3c：troubles 路由
 
@@ -149,24 +156,75 @@ frontmatter `description` 必须能回答：
 2. 只打开命中的排查记录。
 3. 提炼现象、判断顺序、根因、验证方式。
 
-### 3d：补查 graphify / source
+### 3d：补查代码证据
 
-只有以下场景才去读源码或图谱：
+只有以下场景才补查代码证据、图谱或结构化查询：
 
 - 元数据命中了，但正文不够精确
-- 正文命中了，但需要确认当前实现
+- 正文命中了，但需要用小上下文确认入口、签名、关键分支或副作用是否仍成立
 - 三类知识源互相冲突
 - 用户明确要调用链、函数位置、影响范围
 
 优先顺序：
 
 1. 命中的模块文档给出的入口
-2. graphify / graph summary
-3. 必要时再读源码
+2. 平台代码搜索工具精确搜索入口名 / 函数名 / 接口名 / 业务关键词，并只保留少量上下文
+3. 需要调用链、影响路径或跨模块关系时，再用 `graphify query` / `graphify explain` / `graphify path`
+4. 仍不足时，读取最小源码片段
+
+代码搜索方法：
+
+1. 先从模块文档入口、函数名、接口名、业务关键词中选 1-3 个最强关键词。
+2. Claude Code：使用 Grep 定位匹配文件/行，再用 Read 只读取命中行附近的最小片段；不要为了看上下文直接全文件 Read。
+3. Codex/终端：使用 `rg -n -C 3` 获取小上下文：
+
+   ```bash
+   rg -n -C 3 "<入口名|函数名|接口名|业务关键词>"
+   ```
+
+4. 如果命中太多，先加路径范围或更精确关键词，不要扩大到全量阅读：
+
+   ```bash
+   rg -n -C 3 "<更精确关键词>" <模块文档给出的目录或文件>
+   ```
+
+5. 代码搜索小上下文已经能确认入口、签名、关键分支、副作用或修改点时，停止读取更多源码。
+6. 只有小上下文不足以判断局部行为时，才打开对应文件的最小片段。
+
+graphify 查询方法：
+
+1. 只有需要调用链、影响面、跨模块关系，或代码搜索定位不到可靠入口时，才做小预算定位：
+
+   ```bash
+   graphify query "定位与 <业务词/接口/函数/模块> 相关的代码入口、调用关系或影响路径，返回最可能的文件、函数、模块和直接依据，不要展开无关背景。" --budget 800
+   ```
+
+2. 如果 query 命中具体节点，再解释该节点：
+
+   ```bash
+   graphify explain "<命中的文件/函数/模块/节点名>"
+   ```
+
+3. 如果用户要求 A 到 B 的关系、调用链或影响路径，使用 path：
+
+   ```bash
+   graphify path "<入口函数/模块/文件>" "<目标函数/模块/文件>"
+   ```
+
+4. 如果 graphify CLI 不可用，不要改读 `graphify-out/graph.json` 或 `GRAPH_REPORT.md`；继续用平台代码搜索和最小源码片段兜底。
+5. 如果 graphify 输出只给出候选文件，没有给出明确调用边，则只能把它当作定位线索，再读取候选入口的最小源码片段确认当前事实。
+
+调用关系约束：
+
+- AI 不负责从源码片段自行归纳完整调用图。
+- 只有 graphify 显式边、`graphify path` 结果，或当前打开文件中的直接调用，才能作为 callers / callees 证据。
+- 仅从当前文件看到的调用必须标为“局部直接证据”，不得说成全量调用链。
+- interface 动态分发、反射、依赖注入、路由注册、函数变量等场景必须标明证据边界；工具没有给出高置信结果时，说“调用链证据不足”。
+- 禁止为了确认而全量扫源码。
 
 **强制总结规则：**
 
-- 如果本轮代码定位不是直接从现有 `modules` 文档命中入口，而是依赖 graphify/source/`rg` 继续找出来的，那么本轮结束前必须触发一次 `repomind-summary`
+- 如果本轮代码定位不是直接从现有 `modules` 文档命中入口，而是依赖代码搜索、graphify 或源码片段继续找出来的，那么本轮结束前必须触发一次 `repomind-summary`
 - 原因不是“查了代码就一定有新知识”，而是这通常意味着现有模块文档或模块关键词不足以完成首轮路由
 - 此时至少要写一条 `module_knowledge`，说明：
   - 缺了哪个入口定位
@@ -178,12 +236,12 @@ frontmatter `description` 必须能回答：
 | 激活维度 | 推荐顺序 |
 |----------|----------|
 | 仅业务概念 | concepts → 必要时 modules/code |
-| 仅代码模块 | modules → graphify/source |
-| 仅异常排查 | troubles → concepts → modules → graphify/source |
-| 业务概念 + 代码模块 | concepts → modules → graphify/source |
+| 仅代码模块 | modules → 代码搜索小上下文 → 必要时 graphify → 最小源码片段 |
+| 仅异常排查 | troubles → concepts → modules → 代码搜索小上下文 → 必要时 graphify → 最小源码片段 |
+| 业务概念 + 代码模块 | concepts → modules → 代码搜索小上下文 → 必要时 graphify → 最小源码片段 |
 | 业务概念 + 异常排查 | concepts → troubles → modules |
-| 代码模块 + 异常排查 | troubles → modules → graphify/source |
-| 三者都有 | concepts → troubles → modules → graphify/source |
+| 代码模块 + 异常排查 | troubles → modules → 代码搜索小上下文 → 必要时 graphify → 最小源码片段 |
+| 三者都有 | concepts → troubles → modules → 代码搜索小上下文 → 必要时 graphify → 最小源码片段 |
 | 业务纠错 | 先定位被纠错的 concept/module/trouble → 当前代码或用户确认补证 → 保存修订发现 |
 
 不要为了覆盖率把整个知识库都读一遍。
@@ -201,6 +259,7 @@ frontmatter `description` 必须能回答：
 
 - 业务结论必须能追溯到 concept 卡片、用户确认或当前代码。
 - 代码位置必须能追溯到 module 文档和当前代码证据。
+- 调用方/被调用方必须能追溯到 graphify 结构结果，或明确打开文件中的局部直接调用；证据不全时不得声称完整调用链。
 - 排查建议必须能追溯到 trouble 记录、当前代码或本次分析形成的明确路径。
 - 证据不足时必须直说“当前证据不足”，并说明下一步查什么。
 
@@ -246,7 +305,7 @@ JSONEOF
 
 - `new_findings` 为空时，`needs_summary` 必须为 `false`
 - 只要存在任何新知识，`needs_summary` 就必须为 `true`
-- 如果本轮发生了“绕过 module 文档、直接查代码/图谱才定位到实现”的情况，即使最后只补模块入口词或关键词，也必须令 `needs_summary = true`
+- 如果本轮发生了“绕过 module 文档、依赖代码搜索 / graphify / 源码片段才定位到实现”的情况，即使最后只补模块入口词或关键词，也必须令 `needs_summary = true`
 - 如果用户纠正了 AI 或 RepoMind 的业务事实、模块归属、入口位置、排查根因或历史结论，必须记录旧说法、新说法、证据来源和影响范围，并令 `needs_summary = true`
 
 ## 步骤 7：自动触发 summary
