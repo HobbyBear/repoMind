@@ -41,7 +41,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		filepath.Join(repomindDir, "concepts"),
 		filepath.Join(repomindDir, "troubles"),
 		filepath.Join(repomindDir, "graph"),
-		filepath.Join(repomindDir, "bin"),
 	}
 	for _, d := range dirs {
 		if err := fsutil.EnsureDir(d); err != nil {
@@ -76,11 +75,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("graphify gitignore: %w", err)
 	}
 
-	// repomind-internal binary
-	if err := fsutil.CopyExecutable(filepath.Join(repomindDir, "bin", "repomind-internal")); err != nil {
-		return fmt.Errorf("failed to copy internal tool: %w", err)
-	}
-
 	if _, err := kb.Migrate(projectRoot); err != nil {
 		return fmt.Errorf("knowledge base migration: %w", err)
 	}
@@ -113,7 +107,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("  modules/")
 	fmt.Println("  troubles/")
 	fmt.Println("  graph/")
-	fmt.Println("  bin/repomind-internal")
 	fmt.Println()
 	fmt.Println(".claude/skills/")
 	fmt.Println("  repomind-query/SKILL.md")
@@ -257,8 +250,6 @@ func ensureRepomindGitignore(projectRoot string) error {
 !concepts/**
 !modules/**
 !troubles/**
-!bin/repomind-internal
-!bin/repomind-internal.exe
 
 # Legacy central index files are obsolete.
 index.json

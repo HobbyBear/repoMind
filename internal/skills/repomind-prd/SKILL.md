@@ -42,8 +42,8 @@ description: "..."
 先执行：
 
 ```bash
-.repomind/bin/repomind-internal kb-migrate
-.repomind/bin/repomind-internal kb-metadata
+repomind kb-migrate
+repomind kb-metadata
 ```
 
 规则：

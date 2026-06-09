@@ -90,7 +90,7 @@ frontmatter `description` 必须能回答：
 在任何查询前，先执行：
 
 ```bash
-.repomind/bin/repomind-internal kb-migrate
+repomind kb-migrate
 ```
 
 如果仓库里还残留旧格式，这一步会先修复，再继续查询。
@@ -100,7 +100,7 @@ frontmatter `description` 必须能回答：
 先执行：
 
 ```bash
-.repomind/bin/repomind-internal kb-metadata
+repomind kb-metadata
 ```
 
 读取 JSON 中三类信息：

@@ -58,7 +58,7 @@ description: "..."
 在读取或写入任何知识文件前，先执行：
 
 ```bash
-.repomind/bin/repomind-internal kb-migrate
+repomind kb-migrate
 ```
 
 这一步必须每次执行。它会：
@@ -102,7 +102,7 @@ git add graphify-out/ .repomind/
 ## 步骤 3：运行 graph-scan
 
 ```bash
-.repomind/bin/repomind-internal graph-scan
+repomind graph-scan
 ```
 
 它会生成 `.repomind/graph/summary.json`，用于辅助判断：
@@ -117,7 +117,7 @@ git add graphify-out/ .repomind/
 先读取知识库元数据，而不是盲扫全文：
 
 ```bash
-.repomind/bin/repomind-internal kb-metadata
+repomind kb-metadata
 ```
 
 如果当前知识库为空，继续创建；如果已有文档，先看元数据决定哪些旧文档需要合并。
@@ -250,7 +250,7 @@ keywords:
 写完文档后再次执行：
 
 ```bash
-.repomind/bin/repomind-internal kb-metadata
+repomind kb-metadata
 git add .repomind/ graphify-out/
 ```
 

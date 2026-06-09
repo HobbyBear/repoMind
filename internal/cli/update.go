@@ -154,17 +154,10 @@ cd /d "%s"
 // syncProject refreshes embedded skills and internal binary in a project.
 // Preserves knowledge content while normalizing it to the current metadata format.
 func syncProject(projectRoot string) error {
-	repomindDir := filepath.Join(projectRoot, ".repomind")
-
 	if err := skills.InstallSkills(projectRoot); err != nil {
 		return fmt.Errorf("skills: %w", err)
 	}
 	fmt.Println("Refreshed skills")
-
-	if err := fsutil.CopyExecutable(filepath.Join(repomindDir, "bin", "repomind-internal")); err != nil {
-		return fmt.Errorf("internal binary: %w", err)
-	}
-	fmt.Println("Refreshed internal binary")
 
 	if _, err := kb.Migrate(projectRoot); err != nil {
 		return fmt.Errorf("knowledge base migration: %w", err)
