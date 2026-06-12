@@ -6,6 +6,16 @@
 
 ## 安装
 
+### 从源码构建
+
+```bash
+# 本地编译（静态链接，无 glibc 依赖）
+make build
+
+# 交叉编译所有平台
+make build-all
+```
+
 ### macOS / Linux
 
 ```bash

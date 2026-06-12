@@ -9,14 +9,20 @@ When publishing a GitHub Release for this repository, do not stop after local bu
 1. Run the full test suite before release:
 
    ```bash
-   go test ./...
+   make test
    ```
 
 2. Commit source changes before creating the release tag.
 
 3. Create and push the version tag that matches the release, for example `v0.6.0`.
 
-4. Build all required platform binaries:
+4. Build all required platform binaries (all targets use `CGO_ENABLED=0` for static linking to avoid glibc version dependency):
+
+   ```bash
+   make build-all
+   ```
+
+   Generated assets:
 
    - `repomind-linux-amd64`
    - `repomind-linux-arm64`
