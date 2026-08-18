@@ -8,8 +8,16 @@ import (
 	"strings"
 )
 
-//go:embed repomind-query repomind-summary repomind-init repomind-prd
+//go:embed repomind-query repomind-summary repomind-init repomind-prd repomind-compact
 var skillFiles embed.FS
+
+func CompactPrompt() (string, error) {
+	data, err := skillFiles.ReadFile("repomind-compact/SKILL.md")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
 
 func InstallSkills(repoRoot string) error {
 	entries, err := skillFiles.ReadDir(".")

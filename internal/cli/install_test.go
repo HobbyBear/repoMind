@@ -64,7 +64,11 @@ func TestRepomindInstructionsRequireSummaryGateForCorrections(t *testing.T) {
 		"用户纠正 AI 或 RepoMind 的业务结论、模块判断或排查结论时",
 		"只要用户给出业务纠错或修订结论",
 		"用户明确要求沉淀知识时",
-		"不创建新的集中式导览或索引文档",
+		"不直接修改自动生成的 README/catalog",
+		`repomind kb-search --query "..." --limit 5`,
+		"进入 Top 5 才能清理 findings",
+		`repomind kb-search --query "..." --expect <写入文件>`,
+		"repomind kb-validate --strict --file <写入文件>",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("repomind instructions missing %q:\n%s", want, content)

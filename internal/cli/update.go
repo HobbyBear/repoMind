@@ -159,10 +159,10 @@ func syncProject(projectRoot string) error {
 	}
 	fmt.Println("Refreshed skills")
 
-	if _, err := kb.Migrate(projectRoot); err != nil {
-		return fmt.Errorf("knowledge base migration: %w", err)
+	if _, err := kb.Build(projectRoot); err != nil {
+		return fmt.Errorf("knowledge base build: %w", err)
 	}
-	fmt.Println("Normalized knowledge metadata")
+	fmt.Println("Built knowledge catalog and overview")
 
 	if err := ensureRepomindGitignore(projectRoot); err != nil {
 		return fmt.Errorf("repomind gitignore: %w", err)

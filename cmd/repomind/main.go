@@ -20,11 +20,12 @@ func main() {
 		Short: "RepoMind - Skill-first business knowledge base for your code",
 		Long: `RepoMind is a Skill-first local business code knowledge base system.
 
-It is not a traditional CLI. The only command users need is:
+Install RepoMind into a project with:
 
   repomind install
 
-Other commands are internal and used by RepoMind skills (Claude Code / Codex).`,
+Knowledge commands such as kb-search, kb-build, kb-validate, and kb-new form
+the stable data-source interface used by external systems and RepoMind skills.`,
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},

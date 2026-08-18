@@ -75,8 +75,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("graphify gitignore: %w", err)
 	}
 
-	if _, err := kb.Migrate(projectRoot); err != nil {
-		return fmt.Errorf("knowledge base migration: %w", err)
+	if _, err := kb.Build(projectRoot); err != nil {
+		return fmt.Errorf("knowledge base build: %w", err)
 	}
 
 	// git-level config (uses git root, not project root)
@@ -103,6 +103,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println(".repomind/")
 	fmt.Println("  .kb-format.json")
+	fmt.Println("  README.md (generated overview)")
+	fmt.Println("  project.md (human-authored project overview)")
 	fmt.Println("  concepts/")
 	fmt.Println("  modules/")
 	fmt.Println("  troubles/")
@@ -113,12 +115,14 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println("  repomind-summary/SKILL.md")
 	fmt.Println("  repomind-init/SKILL.md")
 	fmt.Println("  repomind-prd/SKILL.md")
+	fmt.Println("  repomind-compact/SKILL.md")
 	fmt.Println()
 	fmt.Println(".codex/skills/")
 	fmt.Println("  repomind-query/SKILL.md")
 	fmt.Println("  repomind-summary/SKILL.md")
 	fmt.Println("  repomind-init/SKILL.md")
 	fmt.Println("  repomind-prd/SKILL.md")
+	fmt.Println("  repomind-compact/SKILL.md")
 	fmt.Println()
 	fmt.Println("Git:")
 	fmt.Println("  .gitattributes — graphify-out/* 冲突时自动取远端")
@@ -127,7 +131,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
 	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
 	fmt.Println()
-	fmt.Println("知识路由已切换为每个 concepts/modules/troubles 文档自己的 name/description 元数据。")
+	fmt.Println("知识路由使用 kb-search 检索 name/description/keywords 和正文分节。")
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
 	return nil
@@ -247,9 +251,14 @@ func ensureGraphifyGitignore(projectRoot string) error {
 func ensureRepomindGitignore(projectRoot string) error {
 	gitignore := `# RepoMind 知识库文件 —— 必须被 git 跟踪
 !.kb-format.json
+!README.md
+!project.md
 !concepts/**
 !modules/**
 !troubles/**
+
+# Machine-generated catalog; rebuild with repomind kb-build.
+.generated/
 
 # Legacy central index files are obsolete.
 index.json
@@ -294,7 +303,7 @@ func repomindInstructionContent() string {
 - RepoMind 查出来的内容不是“参考一下就算了”，而是回答结论、修改决策、排查路径的凭证和上下文依据。
 - 命中的 concepts / modules / troubles 以及必要的 graphify 结构结果，必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
 - 如果 RepoMind 命中结果不足以支持结论，必须明确说“当前证据不足”，并继续补查代码或图谱。
-- RepoMind 当前采用每个 knowledge 文档 frontmatter 里的 {{BT}}name{{BT}} / {{BT}}description{{BT}} 元数据做首轮路由；其中 {{BT}}description{{BT}} 是首要索引摘要，模块文档还要额外维护 {{BT}}keywords{{BT}} 作为辅助定位词，不依赖集中式 {{BT}}index.json{{BT}} 或目录 README。
+- RepoMind 使用 {{BT}}repomind kb-search{{BT}} 对 {{BT}}name/description/keywords{{BT}} 和正文分节做加权检索，不依赖集中式 {{BT}}index.json{{BT}}；正文新增知识即使尚未进入摘要，也必须能够被召回。
 
 ## repomind-query 触发时机
 
@@ -308,7 +317,7 @@ func repomindInstructionContent() string {
 
 ## repomind-query 使用要求
 
-1. 先查知识库元数据，再按命中打开 concepts / modules / troubles；模块路由要同时参考 {{BT}}name{{BT}} / {{BT}}keywords{{BT}} / {{BT}}description{{BT}}。需要代码证据时先用模块文档入口配合平台代码搜索工具取小上下文：Claude Code 用 Grep 定位后 Read 最小片段，Codex/终端用 {{BT}}rg -n -C 3{{BT}}。上下文足够回答或修改时停止扩展读取。只有需要调用链、影响面或跨模块关系时，才补查 {{BT}}graphify query{{BT}} / {{BT}}explain{{BT}} / {{BT}}path{{BT}}。{{BT}}.repomind/graph/summary.json{{BT}} 只作为初始化辅助摘要，不作为 query 阶段默认检索入口；普通 query 不读取 {{BT}}graphify-out/graph.json{{BT}} 或 {{BT}}GRAPH_REPORT.md{{BT}}。
+1. 先用用户原始问题执行 {{BT}}repomind kb-search --query "..." --limit 5{{BT}}，再按命中打开 concepts / modules / troubles；保留命中字段和章节作为检索追踪。需要代码证据时先用模块文档入口配合平台代码搜索工具取小上下文：Claude Code 用 Grep 定位后 Read 最小片段，Codex/终端用 {{BT}}rg -n -C 3{{BT}}。上下文足够回答或修改时停止扩展读取。只有需要调用链、影响面或跨模块关系时，才补查 {{BT}}graphify query{{BT}} / {{BT}}explain{{BT}} / {{BT}}path{{BT}}。
 2. 最终回答必须基于命中的知识组织，而不是把检索结果放在一边。
 3. 如果命中了业务卡片，回答里要体现业务定义、边界或预期。
 4. 如果命中了模块文档，回答或改动方案里要体现关键入口、影响范围或注意事项。
@@ -339,11 +348,11 @@ func repomindInstructionContent() string {
 
 1. 先做 summary gate，再决定是否落库。
 2. 只沉淀代码不容易直接看出的知识，不重复写显式源码细节。
-3. summary 时先维护索引元数据，再维护正文；优先检查 {{BT}}description{{BT}} 是否还适合作为首轮路由摘要，模块文档还要同步检查 {{BT}}keywords{{BT}} 是否覆盖最新别称、入口词和常见搜索词。
+3. summary 写入后必须执行 {{BT}}repomind kb-build{{BT}}、{{BT}}repomind kb-validate --strict --file <写入文件>{{BT}}，并用原问题执行 {{BT}}repomind kb-search --query "..." --expect <写入文件>{{BT}}；进入 Top 5 才能清理 findings。全库历史警告不能阻断本次写入，但本次文件必须无 warning/error。关键词超过 8 个、文件超过 12 KiB 或章节超过 4 KiB 时按校验建议压缩拆分。
 4. 发现新知识后不要拖到以后；本轮结束前就闭环到 RepoMind。
 5. 如果本轮通过直接代码查找才找到答案，至少要把“缺失的模块入口 / 新增关键词 / 应补的常见修改场景”总结回 RepoMind。
 6. 如果本轮是用户纠错，必须把旧说法、新说法、证据来源和影响范围写入对应 concept/module/trouble；不能只在对话里口头承认。
-7. 如果本轮是用户手动要求沉淀，必须判断它更像业务概念、模块修改经验还是排查经验，只写入 concepts/modules/troubles，不创建新的集中式导览或索引文档。
+7. 如果本轮是用户手动要求沉淀，必须判断它更像项目概览、业务概念、模块修改经验还是排查经验，只写入 project/concepts/modules/troubles，不直接修改自动生成的 README/catalog。
 8. 代码写完后的 summary gate 也必须同步完成；即使最终不写库，也要完成 gate 判定后再给用户最终答复。
 9. 不允许把 summary 描述成后台任务；只有在 summary 完成或明确判定无需更新之后，才能给用户最终答复。
 `

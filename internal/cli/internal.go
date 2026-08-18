@@ -7,6 +7,7 @@ import (
 
 	"repomind/internal/gitutil"
 	"repomind/internal/graph"
+	"repomind/internal/skills"
 
 	"github.com/spf13/cobra"
 )
@@ -16,7 +17,28 @@ func InternalCmds() []*cobra.Command {
 		graphScanCmd(),
 		kbMigrateCmd(),
 		kbMetadataCmd(),
+		kbBuildCmd(),
+		kbAuditCmd(),
+		compactPromptCmd(),
+		kbValidateCmd(),
+		kbSearchCmd(),
+		kbNewCmd(),
 		syncProjectCmd(),
+	}
+}
+
+func compactPromptCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "compact-prompt",
+		Short: "Print the official whole-knowledge-base compaction instructions",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			prompt, err := skills.CompactPrompt()
+			if err != nil {
+				return err
+			}
+			fmt.Print(prompt)
+			return nil
+		},
 	}
 }
 

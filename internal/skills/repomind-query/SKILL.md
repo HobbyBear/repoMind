@@ -9,16 +9,23 @@ metadata:
 
 任何涉及业务逻辑、代码修改、代码定位、项目结构、异常排查的提问，都必须先执行本流程。
 
+## 所有权与调用边界
+
+- 本 skill 由 RepoMind 维护并随 `repomind install/update` 部署。
+- FixForge 等外部系统只负责触发 `repomind-query`，不得复制或另行维护本流程。
+- 知识检索通过 RepoMind CLI 完成；页面、对话编排和最终展示属于外部系统。
+
 纯技术问题可以跳过，例如依赖安装、语言语法、编译器通用报错。
 
 ## 核心原则
 
 1. 先识别意图维度，再决定查哪些知识源。
-2. 先读元数据，再决定打开哪些正文。
-3. 路由不依赖 `index.json` 或 README；优先依赖各知识文档自己的 `name` / `description`，其中 `modules` 还要额外使用 `keywords`。
-4. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
-5. 每次执行本流程后，最终答复前都必须进入 `repomind-summary` 的 summary gate；gate 可以判定无需更新，但不能省略。
-6. 用户纠正业务事实、模块归属、入口位置、排查根因或历史结论时，必须视为新发现并令 `needs_summary = true`。
+2. 先用 `kb-search` 检索元数据和正文分节，再决定打开哪些正文。
+3. 路由不依赖 `index.json` 或 README；`name` / `description` / `keywords` 权重更高，但正文中新沉淀的知识也必须能够被召回。
+4. 默认只检索 `status: active`；只有用户明确要求检查草稿时才使用 `--include-draft`。
+5. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
+6. 每次执行本流程后，最终答复前都必须进入 `repomind-summary` 的 summary gate；gate 可以判定无需更新，但不能省略。
+7. 用户纠正业务事实、模块归属、入口位置、排查根因或历史结论时，必须视为新发现并令 `needs_summary = true`。
 
 ## 知识源边界
 
@@ -85,31 +92,35 @@ frontmatter `description` 必须能回答：
 - 不得把少量源码片段中看到的调用关系说成完整 callers / callees；只有 graphify 明确输出，或当前打开文件中直接出现的调用，才能作为调用证据，并标明是否非穷尽。
 - `.repomind/graph/summary.json` 是初始化阶段的模块候选摘要，不作为 query 阶段的默认检索入口；除非当前流程已经打开了它，否则不要为回答用户问题专门读取它。
 
-## 步骤 0：先修正旧格式
+## 步骤 0：先构建并校验数据源
 
 在任何查询前，先执行：
 
 ```bash
-repomind kb-migrate
+repomind kb-build
 ```
 
-如果仓库里还残留旧格式，这一步会先修复，再继续查询。
+`kb-build` 会修复新旧格式、更新机器目录和人可读总览，并在 JSON 中返回全库校验摘要。历史文档有 error/warning 时记录为治理项，但不能因此阻断本次查询；本次新写入文档由 summary gate 单独强制校验。
 
-## 步骤 1：读取知识库元数据
+## 步骤 1：用原始问题检索候选知识
 
 先执行：
 
 ```bash
-repomind kb-metadata
+repomind kb-search --query "<用户原始问题>" --limit 5
 ```
 
-读取 JSON 中三类信息：
+读取 JSON 中的 `file/kind/name/description/score/matched_fields/matched_sections/snippets`。优先打开分数最高且意图匹配的 1-3 篇，不得全量读取知识正文。
 
-- `concepts[].name/description`
-- `modules[].name/keywords/description`
-- `troubles[].name/description`
+如果问题明确属于单一类型，可缩小范围：
 
-这一阶段只做 skill-style 首轮匹配，不打开全部 markdown 正文。
+```bash
+repomind kb-search --query "<问题>" --kind concept --limit 3
+repomind kb-search --query "<问题>" --kind module --limit 3
+repomind kb-search --query "<问题>" --kind trouble --limit 3
+```
+
+当用户询问“这是一个什么系统、有哪些能力”时，先查 `--kind project`，再按需打开模块导航。
 
 ## 步骤 2：识别意图维度
 
@@ -135,7 +146,7 @@ repomind kb-metadata
 
 当业务概念维度激活时：
 
-1. 先用问题里的业务词与 `concepts[].name/description` 做语义匹配。
+1. 读取 `kb-search --kind concept` 的候选结果。
 2. 只打开最相关的 1-3 张 concept 卡片。
 3. 从正文提炼定义、预期、边界、易混淆概念。
 
@@ -143,7 +154,7 @@ repomind kb-metadata
 
 当代码模块维度激活时：
 
-1. 先用问题里的业务域、改动意图、接口/模块名与 `modules[].name/keywords/description` 匹配。
+1. 读取 `kb-search --kind module` 的候选结果。
 2. 只打开最相关的 1-3 份模块文档。
 3. 从正文提炼关键入口、修改场景、AI 注意事项。
 4. 如果模块文档已给出具体入口，先用平台代码搜索工具对入口名、函数名、接口名或业务关键词做小上下文验证；上下文足够时停止扩展读取。
@@ -152,7 +163,7 @@ repomind kb-metadata
 
 当异常排查维度激活时：
 
-1. 先用症状、影响面、异常词与 `troubles[].name/description` 匹配。
+1. 读取 `kb-search --kind trouble` 的候选结果。
 2. 只打开命中的排查记录。
 3. 提炼现象、判断顺序、根因、验证方式。
 
@@ -251,6 +262,7 @@ graphify 查询方法：
 回答前必须明确：
 
 - 哪些文档命中后被真正用作结论依据
+- 每篇文档命中了 `name/keywords/description/body` 中的哪些字段和哪些章节
 - 哪些只是背景参考
 - 是否与当前代码或其他知识源冲突
 - 是否还缺证据
@@ -267,8 +279,9 @@ graphify 查询方法：
 
 如果本次查询发现了超出已有知识库的新知识，写入 `.repomind/.query-findings.json`。
 
-只记录三类：
+只记录四类：
 
+- `project_knowledge`
 - `concept_knowledge`
 - `module_knowledge`
 - `trouble_knowledge`
@@ -280,6 +293,8 @@ graphify 查询方法：
 - `module_update` / `new_code_location` 视为 `module_knowledge`
 - `trouble_record` 视为 `trouble_knowledge`
 
+`project_knowledge` 只用于系统用途、一级能力、目标用户或业务边界变化，目标固定为 `project.md`；普通模块变化不要写入项目概览。
+
 模板：
 
 ```bash
@@ -287,10 +302,11 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
 {
   "trigger": "问答",
   "intent": "用户意图简述",
+  "retrieval_queries": ["用户原始问题或能代表该发现的实际问法"],
   "known_modules": ["已命中模块"],
   "new_findings": [
     {
-      "type": "concept_knowledge|module_knowledge|trouble_knowledge",
+      "type": "project_knowledge|concept_knowledge|module_knowledge|trouble_knowledge",
       "module": "主模块名",
       "file": "concepts/xxx.md 或 modules/xxx.md",
       "content": "新发现描述"
@@ -341,4 +357,4 @@ Skill: repomind-summary
 - 用户纠正了旧业务结论、模块归属或排查根因
 - 用户明确要求“记一下 / 总结到知识库 / 以后遇到这个要注意 / 这个经验要沉淀”
 
-也同样要按类型写入 `concept_knowledge` / `module_knowledge` / `trouble_knowledge`，然后触发 `repomind-summary`。
+也同样要按类型写入 `project_knowledge` / `concept_knowledge` / `module_knowledge` / `trouble_knowledge`，然后触发 `repomind-summary`。

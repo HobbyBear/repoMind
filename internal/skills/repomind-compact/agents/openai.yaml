@@ -1,0 +1,4 @@
+interface:
+  display_name: "RepoMind Compact"
+  short_description: "精简并重组整个 RepoMind 知识库"
+  default_prompt: "使用 $repomind-compact 全量精简当前仓库的 RepoMind 知识库，优先提升陌生读者可读性；只生成可审阅草案，不提交或推送。"

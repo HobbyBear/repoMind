@@ -12,13 +12,14 @@ import (
 	"repomind/internal/fsutil"
 )
 
-const CurrentFormatVersion = 2
+const CurrentFormatVersion = 3
 
 const formatStateFile = ".kb-format.json"
 
 type Kind string
 
 const (
+	KindProject Kind = "project"
 	KindConcept Kind = "concept"
 	KindModule  Kind = "module"
 	KindTrouble Kind = "trouble"
@@ -26,6 +27,8 @@ const (
 
 type MetadataEntry struct {
 	File        string   `json:"file"`
+	Kind        Kind     `json:"kind,omitempty"`
+	Status      string   `json:"status"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Keywords    []string `json:"keywords,omitempty"`
@@ -33,6 +36,7 @@ type MetadataEntry struct {
 
 type MetadataIndex struct {
 	FormatVersion int             `json:"format_version"`
+	Project       *MetadataEntry  `json:"project,omitempty"`
 	Concepts      []MetadataEntry `json:"concepts"`
 	Modules       []MetadataEntry `json:"modules"`
 	Troubles      []MetadataEntry `json:"troubles"`
@@ -52,6 +56,7 @@ type frontMatter struct {
 	Name        string
 	Description string
 	Keywords    []string
+	Status      string
 }
 
 type legacyIndex struct {
@@ -75,12 +80,24 @@ func (k Kind) dirName() string {
 }
 
 func Migrate(projectRoot string) (*MigrationResult, error) {
+	return migrate(projectRoot, false)
+}
+
+func ForceMigrate(projectRoot string) (*MigrationResult, error) {
+	return migrate(projectRoot, true)
+}
+
+func migrate(projectRoot string, force bool) (*MigrationResult, error) {
 	repomindDir := filepath.Join(projectRoot, ".repomind")
 	if err := fsutil.EnsureDir(repomindDir); err != nil {
 		return nil, err
 	}
 
 	result := &MigrationResult{FormatVersion: CurrentFormatVersion}
+	if !force && !needsMigration(repomindDir) {
+		return result, nil
+	}
+
 	legacyDescriptions, err := readLegacyModuleDescriptions(repomindDir)
 	if err != nil {
 		return nil, err
@@ -127,9 +144,22 @@ func BuildMetadata(projectRoot string) (*MetadataIndex, error) {
 	if _, err := Migrate(projectRoot); err != nil {
 		return nil, err
 	}
+	if _, err := Normalize(projectRoot); err != nil {
+		return nil, err
+	}
 
 	repomindDir := filepath.Join(projectRoot, ".repomind")
-	index := &MetadataIndex{FormatVersion: CurrentFormatVersion}
+	index := &MetadataIndex{
+		FormatVersion: CurrentFormatVersion,
+		Concepts:      make([]MetadataEntry, 0),
+		Modules:       make([]MetadataEntry, 0),
+		Troubles:      make([]MetadataEntry, 0),
+	}
+	if project, err := readProjectMetadata(repomindDir); err != nil {
+		return nil, err
+	} else {
+		index.Project = project
+	}
 	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
 		items, err := readMetadataDir(repomindDir, kind)
 		if err != nil {
@@ -145,6 +175,45 @@ func BuildMetadata(projectRoot string) (*MetadataIndex, error) {
 		}
 	}
 	return index, nil
+}
+
+// Normalize repairs newly added or manually edited knowledge documents even
+// when the one-time format migration has already completed.
+func Normalize(projectRoot string) (*MigrationResult, error) {
+	repomindDir := filepath.Join(projectRoot, ".repomind")
+	result := &MigrationResult{FormatVersion: CurrentFormatVersion}
+	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
+		if err := fsutil.EnsureDir(filepath.Join(repomindDir, kind.dirName())); err != nil {
+			return nil, err
+		}
+		if err := normalizeDir(repomindDir, kind, nil, result); err != nil {
+			return nil, err
+		}
+	}
+	sort.Strings(result.Migrated)
+	return result, nil
+}
+
+func readProjectMetadata(repomindDir string) (*MetadataEntry, error) {
+	path := filepath.Join(repomindDir, "project.md")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	fm, body, _ := splitFrontMatter(string(data))
+	name := firstNonEmpty(fm.Name, deriveName("project.md", body))
+	description := firstNonEmpty(fm.Description, extractSection(body, "这是一个什么系统"), extractFirstParagraph(body))
+	return &MetadataEntry{
+		File:        "project.md",
+		Kind:        KindProject,
+		Status:      normalizeStatus(fm.Status),
+		Name:        name,
+		Description: truncate(description, 120),
+		Keywords:    normalizeKeywords("", name, "project.md", fm.Keywords),
+	}, nil
 }
 
 func readMetadataDir(repomindDir string, kind Kind) ([]MetadataEntry, error) {
@@ -179,6 +248,8 @@ func readMetadataDir(repomindDir string, kind Kind) ([]MetadataEntry, error) {
 		}
 		items = append(items, MetadataEntry{
 			File:        filepath.ToSlash(filepath.Join(kind.dirName(), entry.Name())),
+			Kind:        kind,
+			Status:      normalizeStatus(fm.Status),
 			Name:        name,
 			Description: description,
 			Keywords:    normalizeKeywords(kind, name, entry.Name(), fm.Keywords),
@@ -265,13 +336,15 @@ func normalizeDir(repomindDir string, kind Kind, legacyDescriptions map[string]s
 		}
 
 		keywords := normalizeKeywords(kind, name, entry.Name(), fm.Keywords)
-		if hasFrontMatter && fm.Name == name && fm.Description == description && sameStrings(fm.Keywords, keywords) {
+		status := normalizeStatus(fm.Status)
+		if hasFrontMatter && fm.Name == name && fm.Description == description && fm.Status == status && sameStrings(fm.Keywords, keywords) {
 			continue
 		}
 		if err := fsutil.WriteFile(path, renderDocument(frontMatter{
 			Name:        name,
 			Description: description,
 			Keywords:    keywords,
+			Status:      status,
 		}, body)); err != nil {
 			return err
 		}
@@ -287,6 +360,7 @@ func renderDocument(fm frontMatter, body string) string {
 		"---",
 		"name: " + strconv.Quote(cleanInline(fm.Name)),
 		"description: " + strconv.Quote(cleanInline(fm.Description)),
+		"status: " + normalizeStatus(fm.Status),
 	}
 	if len(fm.Keywords) > 0 {
 		lines = append(lines, "keywords:")
@@ -355,10 +429,20 @@ func splitFrontMatter(content string) (frontMatter, string, bool) {
 					fm.Keywords = append(fm.Keywords, cleanInline(keyword))
 				}
 			}
+		case "status":
+			fm.Status = cleanInline(value)
 		}
 	}
 	body := rest[end+len("\n---\n"):]
 	return fm, body, true
+}
+
+func normalizeStatus(status string) string {
+	status = strings.ToLower(cleanInline(status))
+	if status == "" {
+		return "active"
+	}
+	return status
 }
 
 func parseInlineKeywords(raw string) []string {
@@ -598,7 +682,7 @@ func normalizeKeywords(kind Kind, name, fileName string, existing []string) []st
 	for _, keyword := range existing {
 		appendKeyword(keyword)
 	}
-	if kind == KindModule {
+	if kind == KindModule && len(keywords) == 0 {
 		appendKeyword(name)
 		appendKeyword(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
 	}
@@ -649,6 +733,36 @@ func readLegacyModuleDescriptions(repomindDir string) (map[string]string, error)
 		descriptions[module.File] = module.Description
 	}
 	return descriptions, nil
+}
+
+func needsMigration(repomindDir string) bool {
+	if state, ok := readFormatState(repomindDir); !ok || state.Version != CurrentFormatVersion {
+		return true
+	}
+	for _, rel := range []string{
+		"index.json",
+		filepath.Join("concepts", "README.md"),
+		filepath.Join("modules", "README.md"),
+		filepath.Join("troubles", "README.md"),
+	} {
+		if fsutil.Exists(filepath.Join(repomindDir, rel)) {
+			return true
+		}
+	}
+	return false
+}
+
+func readFormatState(repomindDir string) (formatState, bool) {
+	path := filepath.Join(repomindDir, formatStateFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return formatState{}, false
+	}
+	var state formatState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return formatState{}, false
+	}
+	return state, true
 }
 
 func writeFormatState(repomindDir string, state formatState) error {
