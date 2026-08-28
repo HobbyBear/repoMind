@@ -24,7 +24,7 @@ Install RepoMind into a project with:
 
   repomind install
 
-Knowledge commands such as kb-search, kb-build, kb-validate, and kb-new form
+Knowledge commands such as kb-build, kb-validate, and kb-new form
 the stable data-source interface used by external systems and RepoMind skills.`,
 		SilenceUsage:      true,
 		SilenceErrors:     true,

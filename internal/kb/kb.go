@@ -12,14 +12,13 @@ import (
 	"repomind/internal/fsutil"
 )
 
-const CurrentFormatVersion = 3
+const CurrentFormatVersion = 4
 
 const formatStateFile = ".kb-format.json"
 
 type Kind string
 
 const (
-	KindProject Kind = "project"
 	KindConcept Kind = "concept"
 	KindModule  Kind = "module"
 	KindTrouble Kind = "trouble"
@@ -36,7 +35,6 @@ type MetadataEntry struct {
 
 type MetadataIndex struct {
 	FormatVersion int             `json:"format_version"`
-	Project       *MetadataEntry  `json:"project,omitempty"`
 	Concepts      []MetadataEntry `json:"concepts"`
 	Modules       []MetadataEntry `json:"modules"`
 	Troubles      []MetadataEntry `json:"troubles"`
@@ -121,6 +119,7 @@ func migrate(projectRoot string, force bool) (*MigrationResult, error) {
 	}
 
 	for _, rel := range []string{
+		"project.md",
 		"index.json",
 		filepath.Join("concepts", "README.md"),
 		filepath.Join("modules", "README.md"),
@@ -155,11 +154,6 @@ func BuildMetadata(projectRoot string) (*MetadataIndex, error) {
 		Modules:       make([]MetadataEntry, 0),
 		Troubles:      make([]MetadataEntry, 0),
 	}
-	if project, err := readProjectMetadata(repomindDir); err != nil {
-		return nil, err
-	} else {
-		index.Project = project
-	}
 	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
 		items, err := readMetadataDir(repomindDir, kind)
 		if err != nil {
@@ -192,28 +186,6 @@ func Normalize(projectRoot string) (*MigrationResult, error) {
 	}
 	sort.Strings(result.Migrated)
 	return result, nil
-}
-
-func readProjectMetadata(repomindDir string) (*MetadataEntry, error) {
-	path := filepath.Join(repomindDir, "project.md")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	fm, body, _ := splitFrontMatter(string(data))
-	name := firstNonEmpty(fm.Name, deriveName("project.md", body))
-	description := firstNonEmpty(fm.Description, extractSection(body, "这是一个什么系统"), extractFirstParagraph(body))
-	return &MetadataEntry{
-		File:        "project.md",
-		Kind:        KindProject,
-		Status:      normalizeStatus(fm.Status),
-		Name:        name,
-		Description: truncate(description, 120),
-		Keywords:    normalizeKeywords("", name, "project.md", fm.Keywords),
-	}, nil
 }
 
 func readMetadataDir(repomindDir string, kind Kind) ([]MetadataEntry, error) {

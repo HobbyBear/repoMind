@@ -211,8 +211,6 @@ func lastRune(value string) string {
 
 func requiredSectionGroups(kind Kind) [][]string {
 	switch kind {
-	case KindProject:
-		return [][]string{{"这是一个什么系统"}, {"主要能力"}, {"业务边界"}, {"术语速查", "核心术语"}, {"推荐阅读顺序", "从哪里开始"}}
 	case KindConcept:
 		return [][]string{{"是什么", "这是什么"}, {"核心规则"}}
 	case KindModule:

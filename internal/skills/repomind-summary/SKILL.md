@@ -10,8 +10,8 @@ metadata:
 ## 所有权与调用边界
 
 - 本 skill 由 RepoMind 维护并随 `repomind install/update` 部署。
-- FixForge 等外部系统只负责同步触发本 skill，不复制总结规则，也不直接生成机器目录。
-- Markdown 正文是人工可审阅的数据源；`.generated/`、目录总览和检索结果由 RepoMind 生成。
+- FixForge 等外部系统只负责同步触发本 skill，不复制总结规则。
+- Markdown 正文和 frontmatter 是人工可审阅的数据源；本 skill 直接维护它们。
 
 **执行语义：本 skill 必须同步完成。**
 
@@ -34,23 +34,13 @@ metadata:
 10. 已作废但仍有历史查询价值的文档使用 `status: deprecated`，默认路由不再命中；测试页、空页和无业务价值内容直接删除。
 11. 同一规则出现冲突时先停下追加，定位唯一权威定义和当前证据。证据不足则记录待确认冲突，不能同时把两种说法写成“当前规则”。
 
-## 步骤 0：先构建当前数据源
-
-每次进入 summary 前先执行：
-
-```bash
-repomind kb-build
-```
-
-如果历史文件还是旧格式，这一步先修复，并刷新机器目录和人可读总览，然后再继续更新。
-
 ## 人工内容保护
 
 - 只修改本次知识涉及的章节和 frontmatter 字段，不整体重写文档。
 - 人工正文与 AI 实际读取的正文必须一致，不允许在隐藏生成文件里另写一套业务结论。
 - 发现同一章节在本轮已被人工修改时，保留人工内容，使用增量合并并明确冲突点。
 - `name/description/keywords` 是人工可见的检索字段；稳定索引、章节摘要和目录属于生成数据。
-- 产品、运营未完成的内容使用 `status: draft`；本 skill 只有在内容、校验和检索回归都完成后才改为 `status: active`。
+- 产品、运营未完成的内容使用 `status: draft`；本 skill 只有在内容完成且严格校验通过后才改为 `status: active`。
 - “只修改相关章节”不等于只追加：相关章节已有过时或重复内容时，必须就地替换、合并或删除。
 - 页面已超过建议大小时，本轮只允许保持或降低其字节数与重复度；不得借更新继续扩张历史债务。
 
@@ -63,7 +53,7 @@ repomind kb-build
 | 是否有新知识 | ✅/❌ |
 | 是否可复用 | ✅/❌ |
 | 是否有证据 | 用户确认 / 当前代码 / 排查结果 / 现有知识库 |
-| 推荐写入目标 | project / concepts / modules / troubles / discard |
+| 推荐写入目标 | concepts / modules / troubles / discard |
 
 gate 不通过时，直接输出“无需更新”，不要写文件。
 
@@ -99,35 +89,27 @@ cat .repomind/.query-findings.json 2>/dev/null || echo '{"needs_summary": false}
 - 旧说法
 - 新说法
 - 证据来源（用户确认 / 当前代码 / 排查结果 / 现有知识库）
-- 影响范围（project / concept / module / trouble）
+- 影响范围（concept / module / trouble）
 
 如果没有这个文件，但用户明确要求“记一下 / 总结到知识库 / 以后遇到这个要注意 / 这个经验要沉淀”，就按同样格式自行生成临时发现文件，并至少记录：
 
 - 用户要求沉淀的原始要点
 - 这条知识的复用场景
 - 证据来源（用户确认 / 当前代码 / 排查结果 / 现有知识库）
-- 推荐写入目标（project / concept / module / trouble）
+- 推荐写入目标（concept / module / trouble）
 
 如果本轮存在“直接查代码才完成定位”的情况，即使 `.query-findings.json` 还没写，也必须自行补一份临时发现文件，至少包含一条 `module_knowledge`。
-
-发现文件还应保留 `retrieval_queries`：至少包含用户原始问题或一个真实用户会使用的问法。旧 findings 没有该字段时，从当前对话补齐，供步骤 6 做写后回查。
 
 兼容旧类型时，先做归一化：
 
 - `new_business_card` / `new_business_rule` → `concept_knowledge`
 - `module_update` / `new_code_location` / `index_knowledge` → `module_knowledge`
 - `trouble_record` → `trouble_knowledge`
-- 系统用途、一级能力、目标用户或业务边界变化 → `project_knowledge`
+- 无法归入具体 concept/module/trouble 的宽泛项目描述 → `discard`
 
 ## 步骤 3：先读取元数据，再定位要改的文档
 
-执行：
-
-```bash
-repomind kb-metadata
-```
-
-然后按 `name` / `description` 决定要打开哪些知识文档；对 `modules` 还要同时看 `keywords`。
+先只读取人工知识文档的 frontmatter，按 `name` / `description` 决定要打开哪些知识文档；对 `modules` 还要同时看 `keywords`。
 
 不要直接全量打开所有 `concepts/*.md`、`modules/*.md`、`troubles/*.md`。
 
@@ -214,11 +196,10 @@ frontmatter `description` 必须覆盖：
 
 ## 步骤 4：分拣发现类型
 
-把发现分成四类：
+把发现分成三类：
 
 | 类型 | 写入目标 |
 |------|----------|
-| `project_knowledge` | `.repomind/project.md` |
 | `concept_knowledge` | `.repomind/concepts/*.md` |
 | `module_knowledge` | `.repomind/modules/*.md` |
 | `trouble_knowledge` | `.repomind/troubles/*.md` |
@@ -232,15 +213,11 @@ frontmatter `description` 必须覆盖：
 - 即使正文改动很小，只要索引入口词变了，也必须优先更新元数据
 - 如果本轮代码定位绕过了现有模块文档，也必须把“为什么没命中”“缺了什么关键词/入口词”总结到这里
 - 如果本轮是用户纠错，必须判断被修正的是概念边界、模块归属、关键入口还是排查根因，并把旧说法与新说法写入对应文档的正文或修订记录
-- 如果本轮是手动沉淀请求，必须判断它更像项目概览、业务概念、模块修改经验还是排查经验；只写入 project/concepts/modules/troubles，不直接修改生成目录
+- 如果本轮是手动沉淀请求，必须判断它更像业务概念、模块修改经验还是排查经验；只写入 concepts/modules/troubles，不直接修改生成目录
 
 ## 步骤 5：更新知识文档
 
-### 5a：project
-
-只有系统用途、一级能力、目标用户或业务边界发生变化时才更新 `project.md`。保留固定章节 `这是一个什么系统 / 主要能力 / 业务边界 / 常用数据查询入口`，不写函数清单和具体故障步骤。内容不完整时保持 `draft`；发布前改为 `active` 并执行步骤 6 的严格校验和检索回归。
-
-### 5b：concepts
+### 5a：concepts
 
 模板：
 
@@ -279,7 +256,7 @@ status: active
 - 如果卡片更新后适用场景或边界变化，必须同步改 `description`
 - 每次 summary 都要问一句：当前 `description` 是否仍能让模型在首轮路由时命中这张卡；如果不能，先改 `description`
 
-### 5c：modules
+### 5b：modules
 
 模板：
 
@@ -335,7 +312,7 @@ keywords:
   - 补能帮助首轮命中的 `keywords`
   - 如有必要，收紧 `description`
 
-### 5d：troubles
+### 5c：troubles
 
 模板：
 
@@ -380,31 +357,15 @@ status: active
 - 旧结论已过时 → 修正当前有效结论，并保留修订记录
 - 如果问题的典型症状或首查方向发生变化，frontmatter `description` 也要更新
 
-## 步骤 6：构建、校验与写后可检索回归
+## 步骤 6：严格校验本次写入
 
 写完后执行：
 
 ```bash
-repomind kb-build
 repomind kb-validate --strict --file "<本次写入文件>"
-repomind kb-search --query "<retrieval_queries 中的原始问法>" --limit 5 --expect "<本次写入文件>"
 ```
 
-每个新建或实质更新的知识文件至少选择一个真实用户问法执行 `--expect`。目的是确认：
-
-- 所有新增/修改文档都暴露了正确的 `name` / `description`
-- 正文新增知识即使未出现在 description 中，也能通过分节检索召回
-- 用户常用叫法已进入适当的 `keywords`，而不是堆成关键词列表
-- 没有回写旧的集中式索引
-
-如果 `--expect` 失败：
-
-1. 检查知识是否写错类型或拆错文档。
-2. 收紧 `description`，补充用户真实使用的 3-8 个关键词。
-3. 检查章节标题是否表达了业务语义。
-4. 重新执行 `kb-build` 和检索回归，直到进入 Top 5。
-
-只有本次文件通过 strict 校验且全部检索回归通过后，才执行：
+每个新建或实质更新的知识文件都必须单独通过 strict 校验，确认 frontmatter、必备章节、关键词和体积限制无 warning/error。通过后才执行：
 
 ```bash
 rm -f .repomind/.query-findings.json
@@ -416,10 +377,9 @@ rm -f .repomind/.query-findings.json
 
 - Summary gate 结果
 - 哪些发现被写入，哪些被丢弃
-- project/concept/module/trouble 各自的更新动作
+- concept/module/trouble 各自的更新动作
 - 哪些文档的 frontmatter 元数据被同步调整
 - 哪些模块关键词被新增、删除或去重
-- 哪些原始问法通过了写后检索回归，以及目标文件在结果中的位置
 - 如果本轮有绕过模块文档的直接代码查找，必须写明：
   - 绕过了哪个模块或哪个缺口
   - 本次补回了哪些入口信息

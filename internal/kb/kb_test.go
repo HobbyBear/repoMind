@@ -31,6 +31,7 @@ func TestMigrateConvertsLegacyKnowledgeLayout(t *testing.T) {
 	mustWriteFile(t, filepath.Join(repomindDir, "modules", "README.md"), "# legacy modules readme\n")
 	mustWriteFile(t, filepath.Join(repomindDir, "concepts", "README.md"), "# legacy concepts readme\n")
 	mustWriteFile(t, filepath.Join(repomindDir, "troubles", "README.md"), "# legacy troubles readme\n")
+	mustWriteFile(t, filepath.Join(repomindDir, "project.md"), "# legacy project overview\n")
 
 	mustWriteFile(t, filepath.Join(repomindDir, "modules", "payment.md"), `# Payment
 
@@ -71,6 +72,7 @@ VIP 购买后权益没有立即生效。
 	}
 
 	for _, removed := range []string{
+		filepath.Join(repomindDir, "project.md"),
 		filepath.Join(repomindDir, "index.json"),
 		filepath.Join(repomindDir, "modules", "README.md"),
 		filepath.Join(repomindDir, "concepts", "README.md"),
@@ -81,7 +83,7 @@ VIP 购买后权益没有立即生效。
 		}
 	}
 
-	assertContains(t, filepath.Join(repomindDir, ".kb-format.json"), `"version": 3`)
+	assertContains(t, filepath.Join(repomindDir, ".kb-format.json"), `"version": 4`)
 	assertContains(t, filepath.Join(repomindDir, "modules", "payment.md"), `name: "Payment"`)
 	assertContains(t, filepath.Join(repomindDir, "modules", "payment.md"), `description: "支付核心模块，处理支付、退款、回调通知"`)
 	assertContains(t, filepath.Join(repomindDir, "modules", "payment.md"), `keywords:`)
@@ -113,41 +115,6 @@ func TestBuildMetadataNormalizesManualDocumentAfterMigration(t *testing.T) {
 		t.Fatalf("unexpected concepts metadata: %#v", index.Concepts)
 	}
 	assertContains(t, filepath.Join(repomindDir, "concepts", "manual.md"), `name: "人工新增概念"`)
-}
-
-func TestSearchFindsKnowledgeAddedOnlyToBody(t *testing.T) {
-	projectRoot := t.TempDir()
-	repomindDir := filepath.Join(projectRoot, ".repomind")
-	mustWriteFile(t, filepath.Join(repomindDir, "troubles", "payment.md"), `---
-name: "支付异常"
-description: "处理支付状态异常时查看。"
----
-
-# 支付异常
-
-## 问题现象
-
-海外续费订单出现钻石重复发放。
-
-## 排查方法
-
-检查幂等键和回调记录。
-
-## 验证方式
-
-对比订单流水。
-`)
-
-	response, err := Search(projectRoot, SearchOptions{Query: "海外续费为什么钻石重复发放", Limit: 3})
-	if err != nil {
-		t.Fatalf("Search() error = %v", err)
-	}
-	if len(response.Results) == 0 || response.Results[0].File != "troubles/payment.md" {
-		t.Fatalf("body knowledge was not retrieved: %#v", response.Results)
-	}
-	if !containsString(response.Results[0].MatchedFields, "body") {
-		t.Fatalf("expected body match trace: %#v", response.Results[0])
-	}
 }
 
 func TestValidateReportsKeywordAndCompactionLimits(t *testing.T) {
@@ -240,7 +207,7 @@ keywords: ["新概念", "增量验收"]
 	}
 }
 
-func TestBuildCreatesEditableProjectAndGeneratedViews(t *testing.T) {
+func TestBuildCreatesGeneratedViewsWithoutProjectDocument(t *testing.T) {
 	projectRoot := t.TempDir()
 	mustMkdir(t, filepath.Join(projectRoot, ".repomind", "concepts"))
 
@@ -251,9 +218,12 @@ func TestBuildCreatesEditableProjectAndGeneratedViews(t *testing.T) {
 	if result.Catalog != ".repomind/.generated/catalog.json" {
 		t.Fatalf("unexpected catalog path: %#v", result)
 	}
-	assertContains(t, filepath.Join(projectRoot, ".repomind", "project.md"), "## 这是一个什么系统")
+	if _, err := os.Stat(filepath.Join(projectRoot, ".repomind", "project.md")); !os.IsNotExist(err) {
+		t.Fatalf("project.md should not be created: %v", err)
+	}
 	assertContains(t, filepath.Join(projectRoot, ".repomind", "README.md"), "此页由 `repomind kb-build` 生成")
-	assertContains(t, filepath.Join(projectRoot, ".repomind", ".generated", "catalog.json"), `"format_version": 3`)
+	assertContains(t, filepath.Join(projectRoot, ".repomind", ".generated", "catalog.json"), `"format_version": 4`)
+	assertNotContains(t, filepath.Join(projectRoot, ".repomind", ".generated", "catalog.json"), `"project"`)
 }
 
 func TestCreateUsesHumanEditableTemplate(t *testing.T) {
@@ -272,112 +242,6 @@ func TestCreateUsesHumanEditableTemplate(t *testing.T) {
 	assertContains(t, path, "## 数据查询")
 	assertContains(t, path, "## 结果判断")
 	assertContains(t, path, "status: draft")
-}
-
-func TestSearchExcludesDraftByDefault(t *testing.T) {
-	projectRoot := t.TempDir()
-	_, err := Create(projectRoot, CreateOptions{Kind: KindConcept, Name: "草稿权益", Description: "尚未发布的权益说明。", Status: "draft"})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-
-	response, err := Search(projectRoot, SearchOptions{Query: "草稿权益"})
-	if err != nil {
-		t.Fatalf("Search() error = %v", err)
-	}
-	if len(response.Results) != 0 {
-		t.Fatalf("draft leaked into default search: %#v", response.Results)
-	}
-
-	response, err = Search(projectRoot, SearchOptions{Query: "草稿权益", IncludeDraft: true})
-	if err != nil {
-		t.Fatalf("Search(include draft) error = %v", err)
-	}
-	if len(response.Results) != 1 || response.Results[0].Status != "draft" {
-		t.Fatalf("draft was not returned explicitly: %#v", response.Results)
-	}
-}
-
-func TestSearchExcludesDeprecatedByDefault(t *testing.T) {
-	projectRoot := t.TempDir()
-	mustWriteFile(t, filepath.Join(projectRoot, ".repomind", "troubles", "old.md"), `---
-name: "旧排查结论"
-description: "已经作废的消息排查结论。"
-status: deprecated
-keywords: ["消息异常"]
----
-# 旧排查结论
-## 问题现象
-消息异常。
-## 排查方法
-旧方法。
-## 结果判断
-已作废。
-`)
-	response, err := Search(projectRoot, SearchOptions{Query: "消息异常"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Results) != 0 {
-		t.Fatalf("deprecated leaked into default search: %#v", response.Results)
-	}
-	response, err = Search(projectRoot, SearchOptions{Query: "消息异常", IncludeDeprecated: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Results) != 1 || response.Results[0].Status != "deprecated" {
-		t.Fatalf("deprecated result = %#v", response.Results)
-	}
-}
-
-func TestSearchPrioritizesProjectForOnboardingIntent(t *testing.T) {
-	projectRoot := t.TempDir()
-	mustWriteFile(t, filepath.Join(projectRoot, ".repomind", "project.md"), `---
-name: "聊天项目概览"
-description: "新人了解聊天产品和阅读顺序的入口。"
-status: active
----
-# 聊天项目概览
-## 这是一个什么系统
-聊天产品。
-## 主要能力
-- 对话。
-## 业务边界
-- 不负责支付清算。
-## 术语速查
-- 会话：一组消息。
-## 推荐阅读顺序
-1. 先看聊天概念。
-`)
-	mustWriteFile(t, filepath.Join(projectRoot, ".repomind", "troubles", "noisy.md"), `---
-name: "系统新人异常"
-description: "新人遇到系统问题时排查。"
-status: active
----
-# 系统新人异常
-## 问题现象
-新人不知道系统是做什么的。
-## 排查方法
-查看系统项目概览。
-## 结果判断
-新人理解系统。
-`)
-	response, err := Search(projectRoot, SearchOptions{Query: "这个系统是做什么的，新人应该先看什么", Limit: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Results) == 0 || response.Results[0].File != "project.md" {
-		t.Fatalf("onboarding results = %#v", response.Results)
-	}
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func hasIssue(report ValidationReport, code string) bool {
@@ -469,5 +333,16 @@ func assertContains(t *testing.T, path, needle string) {
 	}
 	if !strings.Contains(string(data), needle) {
 		t.Fatalf("expected %s to contain %q, got:\n%s", path, needle, string(data))
+	}
+}
+
+func assertNotContains(t *testing.T, path, needle string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	if strings.Contains(string(data), needle) {
+		t.Fatalf("%s unexpectedly contains %q", path, needle)
 	}
 }

@@ -36,7 +36,6 @@ type Document struct {
 
 type Catalog struct {
 	FormatVersion int        `json:"format_version"`
-	Project       *Document  `json:"project,omitempty"`
 	Documents     []Document `json:"documents"`
 }
 
@@ -62,9 +61,6 @@ func Build(projectRoot string) (*BuildResult, error) {
 	if _, err := Migrate(projectRoot); err != nil {
 		return nil, err
 	}
-	if err := ensureProjectDocument(projectRoot); err != nil {
-		return nil, err
-	}
 	if _, err := Normalize(projectRoot); err != nil {
 		return nil, err
 	}
@@ -76,11 +72,6 @@ func Build(projectRoot string) (*BuildResult, error) {
 	report := validateDocuments(docs)
 	catalog := Catalog{FormatVersion: CurrentFormatVersion, Documents: make([]Document, 0)}
 	for _, doc := range docs {
-		if doc.Kind == KindProject {
-			project := doc.Document
-			catalog.Project = &project
-			continue
-		}
 		catalog.Documents = append(catalog.Documents, doc.Document)
 	}
 
@@ -111,57 +102,9 @@ func Build(projectRoot string) (*BuildResult, error) {
 	}, nil
 }
 
-func ensureProjectDocument(projectRoot string) error {
-	path := filepath.Join(projectRoot, ".repomind", "project.md")
-	if fsutil.Exists(path) {
-		return nil
-	}
-	content := `---
-name: "项目概览"
-description: "待补充：用一两句话说明这是什么系统、服务哪些用户。"
-status: draft
-keywords:
-- "项目概览"
----
-
-# 项目概览
-
-## 这是一个什么系统
-
-待补充。
-
-## 主要能力
-
-- 待补充。
-
-## 业务边界
-
-- 待补充本系统负责什么、不负责什么。
-
-## 术语速查
-
-- 待补充新人首次阅读会遇到的业务术语和缩写。
-
-## 推荐阅读顺序
-
-1. 待补充核心业务流程。
-2. 待补充下一步应阅读的 concept 和 module。
-
-## 常用数据查询入口
-
-- 待补充常用报表、数据表或只读查询入口。
-`
-	return fsutil.WriteFile(path, content)
-}
-
 func scanDocuments(projectRoot string) ([]scannedDocument, error) {
 	repomindDir := filepath.Join(projectRoot, ".repomind")
 	var docs []scannedDocument
-	if doc, err := scanDocument(repomindDir, "project.md", KindProject); err != nil {
-		return nil, err
-	} else if doc != nil {
-		docs = append(docs, *doc)
-	}
 	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
 		dir := filepath.Join(repomindDir, kind.dirName())
 		entries, err := os.ReadDir(dir)
@@ -201,11 +144,7 @@ func scanDocument(repomindDir, rel string, kind Kind) (*scannedDocument, error) 
 	name := firstNonEmpty(fm.Name, deriveName(filepath.Base(rel), body))
 	description := fm.Description
 	if description == "" {
-		if kind == KindProject {
-			description = firstNonEmpty(extractSection(body, "这是一个什么系统"), extractFirstParagraph(body))
-		} else {
-			description = deriveDescription(kind, name, body, "")
-		}
+		description = deriveDescription(kind, name, body, "")
 	}
 	sections, contents := parseDocumentSections(body)
 	return &scannedDocument{
@@ -276,14 +215,7 @@ func stripMarkdownBlock(content string) string {
 func renderOverview(catalog Catalog) string {
 	var b strings.Builder
 	b.WriteString("# RepoMind 知识库\n\n")
-	b.WriteString("> 此页由 `repomind kb-build` 生成。业务说明请修改 `project.md`，具体知识请修改对应 Markdown 文件。\n\n")
-	if catalog.Project != nil && catalog.Project.Status == "active" {
-		b.WriteString("## 项目简介\n\n")
-		b.WriteString(catalog.Project.Description)
-		b.WriteString("\n\n")
-	} else {
-		b.WriteString("## 项目简介\n\n项目简介尚未发布，请在 `project.md` 中补充后将 `status` 改为 `active`。\n\n")
-	}
+	b.WriteString("> 此页由 `repomind kb-build` 生成。具体知识请修改对应 Markdown 文件。\n\n")
 	counts := map[Kind]int{}
 	for _, doc := range catalog.Documents {
 		if doc.Status == "active" {

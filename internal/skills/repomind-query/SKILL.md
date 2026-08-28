@@ -1,6 +1,6 @@
 ---
 name: repomind-query
-description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。先用每个 knowledge 文档的 name/description 元数据做 skill-style 路由，再按需打开 concepts、modules、troubles 和最小代码证据；代码定位优先使用模块文档入口和平台代码搜索小上下文，只有调用链、影响面或跨模块关系不足时才补查 graphify query/explain/path，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
+description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。直接读取 knowledge 文档的 name/description/keywords frontmatter 做 skill-style 路由，再按需打开 concepts、modules、troubles 和最小代码证据；代码定位优先使用模块文档入口和平台代码搜索小上下文，只有调用链、影响面或跨模块关系不足时才补查 graphify query/explain/path，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
 metadata:
   short-description: 先查 RepoMind 再回答
 ---
@@ -13,14 +13,14 @@ metadata:
 
 - 本 skill 由 RepoMind 维护并随 `repomind install/update` 部署。
 - FixForge 等外部系统只负责触发 `repomind-query`，不得复制或另行维护本流程。
-- 知识检索通过 RepoMind CLI 完成；页面、对话编排和最终展示属于外部系统。
+- 知识路由由本 skill 直接读取 RepoMind Markdown 完成；页面、对话编排和最终展示属于外部系统。
 
 纯技术问题可以跳过，例如依赖安装、语言语法、编译器通用报错。
 
 ## 核心原则
 
 1. 先识别意图维度，再决定查哪些知识源。
-2. 先用 `kb-search` 检索元数据和正文分节，再决定打开哪些正文。
+2. 先读取 frontmatter 元数据选出候选，再决定打开哪些正文。
 3. 路由不依赖 `index.json` 或 README；`name` / `description` / `keywords` 权重更高，但正文中新沉淀的知识也必须能够被召回。
 4. 默认只检索 `status: active`；只有用户明确要求检查草稿时才使用 `--include-draft`。
 5. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
@@ -92,35 +92,18 @@ frontmatter `description` 必须能回答：
 - 不得把少量源码片段中看到的调用关系说成完整 callers / callees；只有 graphify 明确输出，或当前打开文件中直接出现的调用，才能作为调用证据，并标明是否非穷尽。
 - `.repomind/graph/summary.json` 是初始化阶段的模块候选摘要，不作为 query 阶段的默认检索入口；除非当前流程已经打开了它，否则不要为回答用户问题专门读取它。
 
-## 步骤 0：先构建并校验数据源
+## 步骤 1：从 frontmatter 选择候选知识
 
-在任何查询前，先执行：
+枚举 `.repomind/concepts/**/*.md`、`.repomind/modules/**/*.md` 和 `.repomind/troubles/**/*.md`，先只读取每篇文档开头的 YAML frontmatter，不读取 `.generated/` 或生成的 README。
 
-```bash
-repomind kb-build
-```
+用用户原始问题和意图比较 `name`、`description`、`keywords`：
 
-`kb-build` 会修复新旧格式、更新机器目录和人可读总览，并在 JSON 中返回全库校验摘要。历史文档有 error/warning 时记录为治理项，但不能因此阻断本次查询；本次新写入文档由 summary gate 单独强制校验。
+- 默认只选择 `status: active`；只有用户明确要求检查草稿或历史结论时才读取 `draft` / `deprecated`。
+- 优先匹配业务对象、典型症状、模块名、别称、缩写和入口词。
+- 每个激活的知识类型最多选择 1-3 篇正文，不得因为候选不确定就全量打开。
+- 元数据没有可靠候选时，使用平台文本搜索在上述人工 Markdown 中查用户原始业务词，只打开命中位置所在的小节。
 
-## 步骤 1：用原始问题检索候选知识
-
-先执行：
-
-```bash
-repomind kb-search --query "<用户原始问题>" --limit 5
-```
-
-读取 JSON 中的 `file/kind/name/description/score/matched_fields/matched_sections/snippets`。优先打开分数最高且意图匹配的 1-3 篇，不得全量读取知识正文。
-
-如果问题明确属于单一类型，可缩小范围：
-
-```bash
-repomind kb-search --query "<问题>" --kind concept --limit 3
-repomind kb-search --query "<问题>" --kind module --limit 3
-repomind kb-search --query "<问题>" --kind trouble --limit 3
-```
-
-当用户询问“这是一个什么系统、有哪些能力”时，先查 `--kind project`，再按需打开模块导航。
+当用户询问“有哪些能力”时，从 module 描述选择相关模块，再按需读取关联 concept。
 
 ## 步骤 2：识别意图维度
 
@@ -146,7 +129,7 @@ repomind kb-search --query "<问题>" --kind trouble --limit 3
 
 当业务概念维度激活时：
 
-1. 读取 `kb-search --kind concept` 的候选结果。
+1. 从 concept frontmatter 候选中选择最相关文档。
 2. 只打开最相关的 1-3 张 concept 卡片。
 3. 从正文提炼定义、预期、边界、易混淆概念。
 
@@ -154,7 +137,7 @@ repomind kb-search --query "<问题>" --kind trouble --limit 3
 
 当代码模块维度激活时：
 
-1. 读取 `kb-search --kind module` 的候选结果。
+1. 从 module frontmatter 候选中选择最相关文档。
 2. 只打开最相关的 1-3 份模块文档。
 3. 从正文提炼关键入口、修改场景、AI 注意事项。
 4. 如果模块文档已给出具体入口，先用平台代码搜索工具对入口名、函数名、接口名或业务关键词做小上下文验证；上下文足够时停止扩展读取。
@@ -163,7 +146,7 @@ repomind kb-search --query "<问题>" --kind trouble --limit 3
 
 当异常排查维度激活时：
 
-1. 读取 `kb-search --kind trouble` 的候选结果。
+1. 从 trouble frontmatter 候选中选择最相关文档。
 2. 只打开命中的排查记录。
 3. 提炼现象、判断顺序、根因、验证方式。
 
@@ -279,9 +262,8 @@ graphify 查询方法：
 
 如果本次查询发现了超出已有知识库的新知识，写入 `.repomind/.query-findings.json`。
 
-只记录四类：
+只记录三类：
 
-- `project_knowledge`
 - `concept_knowledge`
 - `module_knowledge`
 - `trouble_knowledge`
@@ -293,8 +275,6 @@ graphify 查询方法：
 - `module_update` / `new_code_location` 视为 `module_knowledge`
 - `trouble_record` 视为 `trouble_knowledge`
 
-`project_knowledge` 只用于系统用途、一级能力、目标用户或业务边界变化，目标固定为 `project.md`；普通模块变化不要写入项目概览。
-
 模板：
 
 ```bash
@@ -302,11 +282,10 @@ cat > .repomind/.query-findings.json << 'JSONEOF'
 {
   "trigger": "问答",
   "intent": "用户意图简述",
-  "retrieval_queries": ["用户原始问题或能代表该发现的实际问法"],
   "known_modules": ["已命中模块"],
   "new_findings": [
     {
-      "type": "project_knowledge|concept_knowledge|module_knowledge|trouble_knowledge",
+      "type": "concept_knowledge|module_knowledge|trouble_knowledge",
       "module": "主模块名",
       "file": "concepts/xxx.md 或 modules/xxx.md",
       "content": "新发现描述"
@@ -357,4 +336,4 @@ Skill: repomind-summary
 - 用户纠正了旧业务结论、模块归属或排查根因
 - 用户明确要求“记一下 / 总结到知识库 / 以后遇到这个要注意 / 这个经验要沉淀”
 
-也同样要按类型写入 `project_knowledge` / `concept_knowledge` / `module_knowledge` / `trouble_knowledge`，然后触发 `repomind-summary`。
+也同样要按类型写入 `concept_knowledge` / `module_knowledge` / `trouble_knowledge`，然后触发 `repomind-summary`。

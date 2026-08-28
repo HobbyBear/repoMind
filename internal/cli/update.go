@@ -96,17 +96,22 @@ func runUpdate(fromURL string) error {
 	// on disk contains the latest skill files.
 	projectRoot, _ := os.Getwd()
 	if fsutil.Exists(filepath.Join(projectRoot, ".repomind")) {
-		cmd := exec.Command(exePath, "sync-project")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("Skills refresh failed: %v (run 'repomind update' again)\n", err)
+		if err := refreshProjectWithBinary(exePath, projectRoot, os.Stdout, os.Stderr); err != nil {
+			return fmt.Errorf("binary updated but project skill refresh failed: %w", err)
 		}
 	} else {
 		fmt.Println("Run 'repomind install' or re-run 'repomind update' in your project directories to refresh skills.")
 	}
 
 	return nil
+}
+
+func refreshProjectWithBinary(exePath, projectRoot string, stdout, stderr io.Writer) error {
+	cmd := exec.Command(exePath, "sync-project")
+	cmd.Dir = projectRoot
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
 }
 
 // runUpdateWindows handles self-update on Windows where the running exe is locked.
@@ -130,6 +135,10 @@ echo Update complete.
 		batContent += fmt.Sprintf(`
 cd /d "%s"
 "%s" sync-project
+if errorlevel 1 (
+  echo Skill refresh failed. Run repomind update again in this project.
+  exit /b 1
+)
 `, projectRoot, exePath)
 	}
 
@@ -157,7 +166,7 @@ func syncProject(projectRoot string) error {
 	if err := skills.InstallSkills(projectRoot); err != nil {
 		return fmt.Errorf("skills: %w", err)
 	}
-	fmt.Println("Refreshed skills")
+	fmt.Println("Replaced project skills with the latest embedded versions")
 
 	if _, err := kb.Build(projectRoot); err != nil {
 		return fmt.Errorf("knowledge base build: %w", err)

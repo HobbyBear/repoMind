@@ -2,6 +2,7 @@ package skills
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -37,9 +38,57 @@ func InstallSkills(repoRoot string) error {
 		skillName := entry.Name()
 		for _, dstRoot := range targets {
 			dstDir := path.Join(dstRoot, skillName)
-			if err := copyEmbeddedDir(skillFiles, skillName, dstDir); err != nil {
-				return err
+			if err := replaceEmbeddedDir(skillFiles, skillName, dstDir); err != nil {
+				return fmt.Errorf("replace %s: %w", dstDir, err)
 			}
+		}
+	}
+	return nil
+}
+
+// replaceEmbeddedDir installs one managed skill as an exact snapshot. Copying
+// over an existing directory would leave files removed by newer releases.
+func replaceEmbeddedDir(fsys fs.FS, srcDir, dstDir string) error {
+	parent := path.Dir(dstDir)
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return err
+	}
+
+	staging, err := os.MkdirTemp(parent, "."+path.Base(dstDir)+"-staging-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+
+	if err := copyEmbeddedDir(fsys, srcDir, staging); err != nil {
+		return err
+	}
+
+	backup := ""
+	if _, err := os.Stat(dstDir); err == nil {
+		backup, err = os.MkdirTemp(parent, "."+path.Base(dstDir)+"-backup-")
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(backup); err != nil {
+			return err
+		}
+		if err := os.Rename(dstDir, backup); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if err := os.Rename(staging, dstDir); err != nil {
+		if backup != "" {
+			_ = os.Rename(backup, dstDir)
+		}
+		return err
+	}
+	if backup != "" {
+		if err := os.RemoveAll(backup); err != nil {
+			return err
 		}
 	}
 	return nil

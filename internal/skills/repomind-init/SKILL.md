@@ -94,7 +94,6 @@ repomind kb-build
 - `.repomind/troubles/**`
 - `.repomind/.kb-format.json`
 - `.repomind/README.md`
-- `.repomind/project.md`
 
 如果需要，执行：
 
@@ -126,17 +125,6 @@ repomind kb-metadata
 ```
 
 如果当前知识库为空，继续创建；如果已有文档，先看元数据决定哪些旧文档需要合并。
-
-### 4a：填写项目概览
-
-初始化必须先更新 `.repomind/project.md`，不能保留安装时的占位内容。固定章节为：
-
-- `这是一个什么系统`：1-3 句话说明目标用户、核心对象和系统用途。
-- `主要能力`：只列稳定的一层业务能力，不展开代码目录。
-- `业务边界`：说明本系统负责和不负责的范围。
-- `常用数据查询入口`：只写高置信的数据表、报表或只读查询入口；证据不足时留空，不猜测。
-
-内容完成后把 `status` 改为 `active`。项目概览用于回答“这是一个什么系统、具有哪些功能”，具体定位仍由 modules 承担。
 
 ## 步骤 5：归纳业务模块和业务概念
 
@@ -280,7 +268,6 @@ git add .repomind/ graphify-out/
 
 - 新建/合并了哪些 concepts
 - 新建/合并了哪些 modules
-- `project.md` 是否已完成并发布
 - 待确认概念
 - 待确认模块
 - troubles 仍为空是预期行为

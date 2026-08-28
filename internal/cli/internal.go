@@ -21,7 +21,6 @@ func InternalCmds() []*cobra.Command {
 		kbAuditCmd(),
 		compactPromptCmd(),
 		kbValidateCmd(),
-		kbSearchCmd(),
 		kbNewCmd(),
 		syncProjectCmd(),
 	}
