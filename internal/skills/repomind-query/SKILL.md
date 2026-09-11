@@ -1,11 +1,39 @@
 ---
 name: repomind-query
-description: 查阅业务逻辑、定位代码、排查问题，需求分析，方案设计时优先自动触发。直接读取 knowledge 文档的 name/description/keywords frontmatter 做 skill-style 路由，再按需打开 concepts、modules、troubles 和最小代码证据；代码定位优先使用模块文档入口和平台代码搜索小上下文，只有调用链、影响面或跨模块关系不足时才补查 graphify query/explain/path，回答前自动进入 repomind-summary gate；有新发现或用户纠错时写回 RepoMind。
+description: 查阅业务逻辑、定位代码、排查问题、需求分析或方案设计时优先自动触发。先用 repomind kb-metadata 对 name/description/keywords/code_refs 做只读候选排序，再按需打开少量 concepts、modules、troubles 和最小代码证据；只有调用链、影响面或跨模块关系不足时才补查 graphify，回答前自动进入 repomind-summary gate。
 metadata:
   short-description: 先查 RepoMind 再回答
 ---
 
 # RepoMind 编码前 / 问答分析
+
+## CLI 环境预检
+
+执行本 Skill 的任何其他步骤前，先检查 RepoMind CLI；已存在时只验证，不下载或更新。
+
+macOS / Linux：
+
+```bash
+if ! command -v repomind >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.sh | bash
+  export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+  hash -r 2>/dev/null || true
+fi
+REPOMIND_BIN="$(command -v repomind)"; "$REPOMIND_BIN" --help >/dev/null
+```
+
+Windows PowerShell：
+
+```powershell
+if (-not (Get-Command repomind -ErrorAction SilentlyContinue)) {
+  iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex
+  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+$repomindBin = (Get-Command repomind -ErrorAction SilentlyContinue).Source; if (-not $repomindBin) { throw "RepoMind CLI 安装后仍不在 PATH" }
+& $repomindBin --help | Out-Null
+```
+
+只使用上述 RepoMind 官方安装地址。不得只修改 shell 配置或系统环境变量后等待新终端：当前进程必须立即刷新 PATH 并解析出绝对路径。后续代码块中的 `repomind` 应使用已解析的 `$REPOMIND_BIN` / `$repomindBin` 执行；若新的工具调用启动了独立 shell，先重复 PATH 刷新和路径解析。下载、安装、刷新或 `--help` 验证任一步失败时立即停止，不得继续读写知识库或静默改用源码构建。
 
 任何涉及业务逻辑、代码修改、代码定位、项目结构、异常排查的提问，都必须先执行本流程。
 
@@ -13,15 +41,15 @@ metadata:
 
 - 本 skill 由 RepoMind 维护并随 `repomind install/update` 部署。
 - FixForge 等外部系统只负责触发 `repomind-query`，不得复制或另行维护本流程。
-- 知识路由由本 skill 直接读取 RepoMind Markdown 完成；页面、对话编排和最终展示属于外部系统。
+- 知识路由由 RepoMind 的只读候选排序完成；页面、对话编排和最终展示属于外部系统。
 
 纯技术问题可以跳过，例如依赖安装、语言语法、编译器通用报错。
 
 ## 核心原则
 
 1. 先识别意图维度，再决定查哪些知识源。
-2. 先读取 frontmatter 元数据选出候选，再决定打开哪些正文。
-3. 路由不依赖 `index.json` 或 README；`name` / `description` / `keywords` 权重更高，但正文中新沉淀的知识也必须能够被召回。
+2. 先调用一次 `kb-metadata --query` 选出 Top-K 候选，再决定打开哪些正文；不要自行组合 `find`、`rg`、`sed` 扫全库元数据。
+3. 路由不依赖 `index.json` 或 README；`code_refs` 精确命中权重最高，`name` / `description` / `keywords` 和正文标题用于补充召回。
 4. 默认只检索 `status: active`；只有用户明确要求检查草稿时才使用 `--include-draft`。
 5. 只把“代码不会直接告诉你的新知识”写入 `.repomind/.query-findings.json`。
 6. 每次执行本流程后，最终答复前都必须进入 `repomind-summary` 的 summary gate；gate 可以判定无需更新，但不能省略。
@@ -63,6 +91,12 @@ frontmatter `keywords` 必须承担：
 - 英文名、缩写、核心业务词
 - 用户最可能拿来搜这个模块的 3-8 个判别词
 
+frontmatter `code_refs` 保存稳定代码锚点：
+
+- Go 优先写完整模块/package/receiver/方法，例如 `example/internal/order.(*Service).Create`
+- 其他语言使用 `仓库相对文件#类或函数`；不要保存行号
+- `code_refs` 是定位和候选召回证据，不代表两个文档一定应该合并
+
 ### troubles
 
 负责回答：
@@ -92,16 +126,22 @@ frontmatter `description` 必须能回答：
 - 不得把少量源码片段中看到的调用关系说成完整 callers / callees；只有 graphify 明确输出，或当前打开文件中直接出现的调用，才能作为调用证据，并标明是否非穷尽。
 - `.repomind/graph/summary.json` 是初始化阶段的模块候选摘要，不作为 query 阶段的默认检索入口；除非当前流程已经打开了它，否则不要为回答用户问题专门读取它。
 
-## 步骤 1：从 frontmatter 选择候选知识
+## 步骤 1：只读召回候选知识
 
-枚举 `.repomind/concepts/**/*.md`、`.repomind/modules/**/*.md` 和 `.repomind/troubles/**/*.md`，先只读取每篇文档开头的 YAML frontmatter，不读取 `.generated/` 或生成的 README。
+先执行一次：
 
-用用户原始问题和意图比较 `name`、`description`、`keywords`：
+```bash
+repomind kb-metadata --query "<用户原始问题，保留函数名和业务词>" --limit 5
+```
+
+该模式直接扫描人工 Markdown，但只输出 Top-K 元数据和命中依据，不运行迁移、规范化或其他写操作。读取返回的 `file/name/description/code_refs/score/matched_fields/reasons`：
 
 - 默认只选择 `status: active`；只有用户明确要求检查草稿或历史结论时才读取 `draft` / `deprecated`。
-- 优先匹配业务对象、典型症状、模块名、别称、缩写和入口词。
+- 优先采用 `code_refs` 精确函数命中，再看业务对象、典型症状、模块名、别称、缩写和入口词。
 - 每个激活的知识类型最多选择 1-3 篇正文，不得因为候选不确定就全量打开。
-- 元数据没有可靠候选时，使用平台文本搜索在上述人工 Markdown 中查用户原始业务词，只打开命中位置所在的小节。
+- 没有可靠候选时，才使用平台文本搜索在人工 Markdown 中查原始业务词，并只打开命中小节。
+
+问题明确属于单一类型时可加 `--kind concept|module|trouble`。命令不可用时才降级为直接读取 frontmatter，不得先执行构建或迁移。
 
 当用户询问“有哪些能力”时，从 module 描述选择相关模块，再按需读取关联 concept。
 
@@ -129,7 +169,7 @@ frontmatter `description` 必须能回答：
 
 当业务概念维度激活时：
 
-1. 从 concept frontmatter 候选中选择最相关文档。
+1. 从 `kb-metadata` 的 concept 候选中选择最相关文档。
 2. 只打开最相关的 1-3 张 concept 卡片。
 3. 从正文提炼定义、预期、边界、易混淆概念。
 
@@ -137,7 +177,7 @@ frontmatter `description` 必须能回答：
 
 当代码模块维度激活时：
 
-1. 从 module frontmatter 候选中选择最相关文档。
+1. 从 `kb-metadata` 的 module 候选中选择最相关文档。
 2. 只打开最相关的 1-3 份模块文档。
 3. 从正文提炼关键入口、修改场景、AI 注意事项。
 4. 如果模块文档已给出具体入口，先用平台代码搜索工具对入口名、函数名、接口名或业务关键词做小上下文验证；上下文足够时停止扩展读取。
@@ -146,7 +186,7 @@ frontmatter `description` 必须能回答：
 
 当异常排查维度激活时：
 
-1. 从 trouble frontmatter 候选中选择最相关文档。
+1. 从 `kb-metadata` 的 trouble 候选中选择最相关文档。
 2. 只打开命中的排查记录。
 3. 提炼现象、判断顺序、根因、验证方式。
 

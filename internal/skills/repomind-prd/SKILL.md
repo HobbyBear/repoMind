@@ -7,6 +7,34 @@ metadata:
 
 # RepoMind PRD 业务知识补充
 
+## CLI 环境预检
+
+执行本 Skill 的任何其他步骤前，先检查 RepoMind CLI；已存在时只验证，不下载或更新。
+
+macOS / Linux：
+
+```bash
+if ! command -v repomind >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.sh | bash
+  export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+  hash -r 2>/dev/null || true
+fi
+REPOMIND_BIN="$(command -v repomind)"; "$REPOMIND_BIN" --help >/dev/null
+```
+
+Windows PowerShell：
+
+```powershell
+if (-not (Get-Command repomind -ErrorAction SilentlyContinue)) {
+  iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex
+  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+$repomindBin = (Get-Command repomind -ErrorAction SilentlyContinue).Source; if (-not $repomindBin) { throw "RepoMind CLI 安装后仍不在 PATH" }
+& $repomindBin --help | Out-Null
+```
+
+只使用上述 RepoMind 官方安装地址。不得只修改 shell 配置或系统环境变量后等待新终端：当前进程必须立即刷新 PATH 并解析出绝对路径。后续代码块中的 `repomind` 应使用已解析的 `$REPOMIND_BIN` / `$repomindBin` 执行；若新的工具调用启动了独立 shell，先重复 PATH 刷新和路径解析。下载、安装、刷新或 `--help` 验证任一步失败时立即停止，不得继续读写知识库或静默改用源码构建。
+
 ## 触发条件
 
 只有当用户明确提供了历史 PRD / 需求文档 / 产品描述，并希望把它沉淀为业务知识时才执行。

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"repomind/internal/kb"
 
@@ -39,14 +40,31 @@ func kbMigrateCmd() *cobra.Command {
 }
 
 func kbMetadataCmd() *cobra.Command {
-	return &cobra.Command{
+	var query, similarTo, kindValue string
+	var limit int
+	var includeDraft, includeDeprecated bool
+	c := &cobra.Command{
 		Use:   "kb-metadata",
-		Short: "List RepoMind knowledge metadata for routing",
-		Long:  "Scan .repomind/concepts, modules, and troubles and print each file's name and description metadata for skill-style routing.",
+		Short: "List or rank RepoMind knowledge metadata",
+		Long:  "Without filters, list all knowledge metadata. With --query or --similar-to, return a compact read-only candidate ranking with match evidence.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectRoot, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("cannot determine current directory: %w", err)
+			}
+			if query != "" || similarTo != "" {
+				kind := kb.Kind(kindValue)
+				if kind != "" && kind != kb.KindConcept && kind != kb.KindModule && kind != kb.KindTrouble {
+					return fmt.Errorf("unsupported kind %q: use concept, module, or trouble", kindValue)
+				}
+				result, err := kb.FindCandidates(projectRoot, kb.CandidateOptions{
+					Query: query, SimilarTo: similarTo, Kind: kind, Limit: limit,
+					IncludeDraft: includeDraft, IncludeDeprecated: includeDeprecated,
+				})
+				if err != nil {
+					return err
+				}
+				return writeJSON(result)
 			}
 			index, err := kb.BuildMetadata(projectRoot)
 			if err != nil {
@@ -55,6 +73,13 @@ func kbMetadataCmd() *cobra.Command {
 			return writeJSON(index)
 		},
 	}
+	c.Flags().StringVar(&query, "query", "", "rank candidates for a user question")
+	c.Flags().StringVar(&similarTo, "similar-to", "", "rank candidates similar to a .repomind-relative file")
+	c.Flags().StringVar(&kindValue, "kind", "", "limit candidates to concept, module, or trouble")
+	c.Flags().IntVar(&limit, "limit", 5, "maximum candidates to return")
+	c.Flags().BoolVar(&includeDraft, "include-draft", false, "include draft knowledge")
+	c.Flags().BoolVar(&includeDeprecated, "include-deprecated", false, "include deprecated knowledge")
+	return c
 }
 
 func kbBuildCmd() *cobra.Command {
@@ -77,14 +102,29 @@ func kbBuildCmd() *cobra.Command {
 }
 
 func kbAuditCmd() *cobra.Command {
-	return &cobra.Command{
+	var compareTo string
+	c := &cobra.Command{
 		Use:   "kb-audit",
 		Short: "Audit whole knowledge-base readability",
-		Long:  "Measure routing metadata, document size, and validation health for a whole RepoMind knowledge base.",
+		Long:  "Measure knowledge-base quality. With --compare-to, compare the current compacted project against an original project root.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectRoot, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("cannot determine current directory: %w", err)
+			}
+			if compareTo != "" {
+				baselineRoot, err := filepath.Abs(compareTo)
+				if err != nil {
+					return fmt.Errorf("resolve comparison root: %w", err)
+				}
+				if filepath.Base(baselineRoot) == ".repomind" {
+					baselineRoot = filepath.Dir(baselineRoot)
+				}
+				comparison, err := kb.CompareCompaction(baselineRoot, projectRoot)
+				if err != nil {
+					return err
+				}
+				return writeJSON(comparison)
 			}
 			report, err := kb.Audit(projectRoot)
 			if err != nil {
@@ -93,6 +133,8 @@ func kbAuditCmd() *cobra.Command {
 			return writeJSON(report)
 		},
 	}
+	c.Flags().StringVar(&compareTo, "compare-to", "", "original project root or .repomind directory to compare against")
+	return c
 }
 
 func kbValidateCmd() *cobra.Command {
@@ -127,7 +169,7 @@ func kbValidateCmd() *cobra.Command {
 
 func kbNewCmd() *cobra.Command {
 	var kindValue, name, description, file, status string
-	var keywords []string
+	var keywords, codeRefs []string
 	c := &cobra.Command{
 		Use:   "kb-new",
 		Short: "Create a human-editable knowledge document from a template",
@@ -137,7 +179,7 @@ func kbNewCmd() *cobra.Command {
 				return fmt.Errorf("cannot determine current directory: %w", err)
 			}
 			result, err := kb.Create(projectRoot, kb.CreateOptions{
-				Kind: kb.Kind(kindValue), Name: name, Description: description, Keywords: keywords, File: file, Status: status,
+				Kind: kb.Kind(kindValue), Name: name, Description: description, Keywords: keywords, CodeRefs: codeRefs, File: file, Status: status,
 			})
 			if err != nil {
 				return err
@@ -149,6 +191,7 @@ func kbNewCmd() *cobra.Command {
 	c.Flags().StringVar(&name, "name", "", "human-readable knowledge name")
 	c.Flags().StringVar(&description, "description", "", "one or two sentences used for routing")
 	c.Flags().StringSliceVar(&keywords, "keywords", nil, "3-8 search terms or aliases")
+	c.Flags().StringSliceVar(&codeRefs, "code-ref", nil, "stable package-qualified function, method, type, or interface reference")
 	c.Flags().StringVar(&file, "file", "", "optional .md filename")
 	c.Flags().StringVar(&status, "status", "draft", "knowledge status: draft or active")
 	_ = c.MarkFlagRequired("kind")

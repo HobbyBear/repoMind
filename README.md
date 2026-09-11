@@ -7,7 +7,7 @@
 ## 核心特性
 
 - **零手动** — 安装后 AI 自动在编码前后查询和更新知识库，开发者无需记忆任何命令
-- **直接路由** — Skill 直接读取 `name/description/keywords` 选择知识文档，不依赖额外查询命令
+- **轻量候选召回** — 复用 `kb-metadata` 按 `code_refs/name/description/keywords` 返回 Top-K，不引入向量库或额外检索命令
 - **多维知识** — 业务卡片（concepts）定义"是什么"、模块文档（modules）定位"在哪改"、排查记录（troubles）沉淀"为什么出错"
 - **人工可维护** — 产品、运营直接修改简洁 Markdown；机器目录和首页由 RepoMind 自动生成
 - **写后校验** — summary 写入后严格检查格式、关键词和文档体积
@@ -64,6 +64,8 @@ repomind install
 
 `repomind-query` 和 `repomind-summary` 的唯一源码位于 RepoMind，并被编译进二进制。FixForge 等外部系统只调用已部署的 skill，负责页面、对话和权限；不复制检索或总结规则。
 
+所有内置 Skill 执行前都会验证 `repomind` CLI。缺失时使用官方安装脚本下载，并立即刷新当前进程 PATH、解析 CLI 绝对路径后继续；安装或验证失败时停止，不执行知识库读写。
+
 ## 知识目录
 
 ```text
@@ -84,8 +86,12 @@ name: "VIP 会员"
 description: "VIP 订阅权益。判断购买、生效、续费和权益边界时查看。"
 status: active
 keywords: ["VIP", "会员", "订阅"]
+code_refs:
+- "example/internal/entitlement.(*Service).Activate"
 ---
 ```
+
+`code_refs` 是可选的稳定代码锚点。Go 推荐使用 `模块/package.(*Receiver).Method`，其他语言使用 `仓库相对文件#类或函数`；不要保存会随编辑漂移的行号。
 
 `status: draft` 可以保存未完成内容，默认路由不会读取；发布为 `active` 后才进入正常知识源。
 已作废但仍有历史价值的内容使用 `status: deprecated`，默认路由同样排除；只有用户明确要求检查历史结论时才读取。
@@ -96,7 +102,7 @@ keywords: ["VIP", "会员", "订阅"]
 |---|---|---|
 | `concept` | `这是什么`、`核心规则` | `适用场景与边界`、`关联知识` |
 | `module` | `模块职责`、`包含能力`、`技术入口` | `关键约束`、`关联知识` |
-| `trouble` | `问题现象`、`排查方法`、`结果判断` | `数据查询`、`根因与处理`、`关联知识` |
+| `trouble` | `适用症状`、`首查步骤`、`判断分支` | `修复原则`、`验证方式`、`容易误判`、`关联知识` |
 
 旧标题仍可读取，`kb-validate` 会提示逐步迁移，不会因为一次升级整体覆盖人工正文。
 
@@ -107,6 +113,9 @@ keywords: ["VIP", "会员", "订阅"]
 ```bash
 repomind kb-build
 repomind kb-audit
+repomind kb-audit --compare-to /path/to/original-project
+repomind kb-metadata --query "充值订单为什么一直处理中" --limit 5
+repomind kb-metadata --similar-to "troubles/recharge-order-pending.md" --limit 5
 repomind kb-validate
 repomind kb-new --kind trouble --name "充值订单一直处理中" \
   --description "充值订单长时间处于处理中时查看" \
@@ -114,7 +123,8 @@ repomind kb-new --kind trouble --name "充值订单一直处理中" \
 ```
 
 - `kb-build`：规范化人工文档并生成目录和首页。
-- `kb-audit`：审计整库体积、超长页面和路由元数据。
+- `kb-audit`：审计整库体积、超长页面和路由元数据；`--compare-to` 对比压缩前后结构质量、重复率、证据锚点和潜在知识丢失。
+- `kb-metadata`：无参数时输出元数据；带 `--query` 或 `--similar-to` 时只读返回 Top-K 候选及代码符号/词法命中依据。
 - `kb-validate`：检查格式、关键词和体积限制；`--file` 只验收本次文件，`--strict` 将 warning 也视为失败。
 - `kb-new`：生成产品、运营可直接填写的固定模板。
 
@@ -137,16 +147,18 @@ repomind uninstall    # 移除
 repomind update       # 更新到最新版本
 repomind kb-build     # 生成目录与人类首页
 repomind kb-audit     # 审计整库人可读性
+repomind kb-metadata  # 输出元数据或只读召回 Top-K 候选
 repomind kb-validate  # 校验知识质量
 repomind kb-new       # 按模板新增知识
 repomind compact-prompt # 输出压缩 Skill，供外部系统调用
 ```
 
-压缩由 `repomind-compact` Skill 直接识别用户给出的范围。指定文件或目录时只读取、合并和校验这些文件；没有指定范围时才执行整库精简：
+压缩由 `repomind-compact` Skill 直接识别用户给出的范围。指定文件或目录时只读取、合并和校验这些文件；要求领域合并时先从 frontmatter 召回候选，再把同一症状、业务对象和首查入口下的不同根因整理成一篇判断树；没有指定范围时才执行整库精简：
 
 ```text
 $repomind-compact 合并并精简 .repomind/troubles/a.md 和 .repomind/troubles/b.md
 $repomind-compact 只整理 .repomind/troubles/payment/ 目录
+$repomind-compact 查找并合并 VIP 钻石发放领域的所有 trouble
 ```
 
 `repomind update` 下载最新发布二进制后，会用其中内置的官方 Skill 整目录覆盖项目里的旧版本，并删除旧版本遗留文件。

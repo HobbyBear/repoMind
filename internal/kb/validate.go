@@ -172,6 +172,9 @@ func validateDocuments(docs []scannedDocument) ValidationReport {
 			if strings.Contains(section.Title, "修订记录") || strings.Contains(section.Title, "变更记录") || strings.Contains(section.Title, "排查时间线") {
 				add("warning", "revision_log", section.Title, "当前手册中保留了修订或排查时间线。", "将当前有效结论合并到正文，完整演进交给 Git 历史")
 			}
+			if doc.Kind == KindTrouble && isTroubleEventSection(section.Title) {
+				add("warning", "trouble_event_section", section.Title, "诊断手册中保留了单次事件档案章节。", "提炼为判断分支或高价值误判，再删除当前状态、案例和模块清单")
+			}
 		}
 
 		headings := make(map[string]bool)
@@ -201,6 +204,15 @@ func validateDocuments(docs []scannedDocument) ValidationReport {
 	return report
 }
 
+func isTroubleEventSection(title string) bool {
+	for _, marker := range []string{"当前状态", "实际案例", "已确认案例", "涉及模块"} {
+		if strings.Contains(title, marker) {
+			return true
+		}
+	}
+	return title == "案例"
+}
+
 func lastRune(value string) string {
 	runes := []rune(value)
 	if len(runes) == 0 {
@@ -216,7 +228,7 @@ func requiredSectionGroups(kind Kind) [][]string {
 	case KindModule:
 		return [][]string{{"业务描述", "模块职责"}, {"常见修改场景", "包含能力"}, {"关键代码", "技术入口"}}
 	case KindTrouble:
-		return [][]string{{"问题", "问题现象", "现象"}, {"排查路径", "排查方法"}, {"验证方式", "结果判断"}}
+		return [][]string{{"适用症状", "问题", "问题现象", "现象"}, {"首查步骤", "排查路径", "排查方法"}, {"判断分支", "验证方式", "结果判断"}}
 	default:
 		return nil
 	}

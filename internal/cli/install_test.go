@@ -65,7 +65,8 @@ func TestRepomindInstructionsRequireSummaryGateForCorrections(t *testing.T) {
 		"只要用户给出业务纠错或修订结论",
 		"用户明确要求沉淀知识时",
 		"不直接修改自动生成的 README/catalog",
-		"先只读取 RepoMind 人工 Markdown 的 frontmatter",
+		"repomind kb-metadata --query \"<用户原始问题>\" --limit 5",
+		"code_refs/name/description/keywords/score/reasons",
 		"通过后才能清理 findings",
 		"repomind kb-validate --strict --file <写入文件>",
 	} {

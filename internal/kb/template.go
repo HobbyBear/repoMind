@@ -14,6 +14,7 @@ type CreateOptions struct {
 	Name        string
 	Description string
 	Keywords    []string
+	CodeRefs    []string
 	File        string
 	Status      string
 }
@@ -55,7 +56,11 @@ func Create(projectRoot string, options CreateOptions) (*CreateResult, error) {
 	if status != "draft" && status != "active" {
 		return nil, fmt.Errorf("unsupported status %q: use draft or active", options.Status)
 	}
-	fm := frontMatter{Name: options.Name, Description: description, Keywords: normalizeKeywords(options.Kind, options.Name, fileName, options.Keywords), Status: status}
+	fm := frontMatter{
+		Name: options.Name, Description: description,
+		Keywords: normalizeKeywords(options.Kind, options.Name, fileName, options.Keywords),
+		CodeRefs: normalizeCodeRefs(options.CodeRefs), Status: status,
+	}
 	if err := fsutil.WriteFile(path, renderDocument(fm, templateBody(options.Kind, options.Name))); err != nil {
 		return nil, err
 	}
@@ -109,25 +114,19 @@ func templateBody(kind Kind, name string) string {
 	case KindTrouble:
 		return fmt.Sprintf(`# %s
 
-## 问题现象
+## 适用症状
 
-待补充用户或监控看到的现象。
+待补充可重复出现的症状族和不适用边界；不要记录某次事故。
 
-## 排查方法
+## 首查步骤
 
 1. 待补充第一步。
 
-## 数据查询
+## 判断分支
 
-- 待补充只读 SQL、报表或查询入口；不要写真实用户数据和密钥。
-
-## 结果判断
-
-- 待补充不同结果分别说明什么。
-
-## 根因与处理
-
-- 待确认。
+| 证据或条件 | 结论 | 下一步 |
+|---|---|---|
+| 待补充可复现证据 | 待确认 | 待补充下一步 |
 
 ## 关联知识
 

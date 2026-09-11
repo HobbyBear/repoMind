@@ -1,4 +1,4 @@
 interface:
   display_name: "RepoMind Compact"
-  short_description: "按指定文件、目录或整库范围精简 RepoMind"
-  default_prompt: "使用 $repomind-compact 精简我指定的 RepoMind 文件或目录；只有我没有指定范围时才执行整库精简。只生成可审阅草案，不提交或推送。"
+  short_description: "按文件、业务领域或整库聚类并精简 RepoMind 知识"
+  default_prompt: "使用 $repomind-compact 聚类并精简我指定的 RepoMind 范围，把同一诊断入口的 trouble 根因合并成判断分支；只生成可审阅草案，不提交或推送。"

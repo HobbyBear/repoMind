@@ -130,7 +130,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
 	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
 	fmt.Println()
-	fmt.Println("知识路由由 Skill 直接读取 Markdown frontmatter 和相关正文。")
+	fmt.Println("知识路由由 Skill 调用 kb-metadata 只读召回候选，再按需读取相关正文。")
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
 	return nil
@@ -301,7 +301,7 @@ func repomindInstructionContent() string {
 - RepoMind 查出来的内容不是“参考一下就算了”，而是回答结论、修改决策、排查路径的凭证和上下文依据。
 - 命中的 concepts / modules / troubles 以及必要的 graphify 结构结果，必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
 - 如果 RepoMind 命中结果不足以支持结论，必须明确说“当前证据不足”，并继续补查代码或图谱。
-- RepoMind Skill 直接读取 {{BT}}name/description/keywords{{BT}} frontmatter 做首轮路由，不依赖集中式 {{BT}}index.json{{BT}} 或额外查询命令。
+- RepoMind Skill 使用现有 {{BT}}kb-metadata --query{{BT}} 对 {{BT}}code_refs/name/description/keywords{{BT}} 做只读 Top-K 召回，不依赖集中式 {{BT}}index.json{{BT}}、向量数据库或多个外部查询命令。
 
 ## repomind-query 触发时机
 
@@ -315,7 +315,7 @@ func repomindInstructionContent() string {
 
 ## repomind-query 使用要求
 
-1. 先只读取 RepoMind 人工 Markdown 的 frontmatter，按用户原始问题从 {{BT}}name/description/keywords{{BT}} 选出少量 concepts / modules / troubles，再打开相关正文。需要代码证据时先用模块文档入口配合平台代码搜索工具取小上下文：Claude Code 用 Grep 定位后 Read 最小片段，Codex/终端用 {{BT}}rg -n -C 3{{BT}}。上下文足够回答或修改时停止扩展读取。只有需要调用链、影响面或跨模块关系时，才补查 {{BT}}graphify query{{BT}} / {{BT}}explain{{BT}} / {{BT}}path{{BT}}。
+1. 先执行 {{BT}}repomind kb-metadata --query "<用户原始问题>" --limit 5{{BT}}，按返回的 {{BT}}code_refs/name/description/keywords/score/reasons{{BT}} 选出少量 concepts / modules / troubles，再打开相关正文；不要自行组合 find/rg/sed 扫全库元数据。需要代码证据时先用 {{BT}}code_refs{{BT}} 或模块文档入口配合平台代码搜索工具取小上下文：Claude Code 用 Grep 定位后 Read 最小片段，Codex/终端用 {{BT}}rg -n -C 3{{BT}}。上下文足够回答或修改时停止扩展读取。只有需要调用链、影响面或跨模块关系时，才补查 {{BT}}graphify query{{BT}} / {{BT}}explain{{BT}} / {{BT}}path{{BT}}。
 2. 最终回答必须基于命中的知识组织，而不是把检索结果放在一边。
 3. 如果命中了业务卡片，回答里要体现业务定义、边界或预期。
 4. 如果命中了模块文档，回答或改动方案里要体现关键入口、影响范围或注意事项。

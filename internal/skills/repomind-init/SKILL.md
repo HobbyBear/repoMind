@@ -7,6 +7,34 @@ metadata:
 
 # RepoMind 初始化知识库
 
+## CLI 环境预检
+
+执行本 Skill 的任何其他步骤前，先检查 RepoMind CLI；已存在时只验证，不下载或更新。
+
+macOS / Linux：
+
+```bash
+if ! command -v repomind >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.sh | bash
+  export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+  hash -r 2>/dev/null || true
+fi
+REPOMIND_BIN="$(command -v repomind)"; "$REPOMIND_BIN" --help >/dev/null
+```
+
+Windows PowerShell：
+
+```powershell
+if (-not (Get-Command repomind -ErrorAction SilentlyContinue)) {
+  iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex
+  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+$repomindBin = (Get-Command repomind -ErrorAction SilentlyContinue).Source; if (-not $repomindBin) { throw "RepoMind CLI 安装后仍不在 PATH" }
+& $repomindBin --help | Out-Null
+```
+
+只使用上述 RepoMind 官方安装地址。不得只修改 shell 配置或系统环境变量后等待新终端：当前进程必须立即刷新 PATH 并解析出绝对路径。后续代码块中的 `repomind` 应使用已解析的 `$REPOMIND_BIN` / `$repomindBin` 执行；若新的工具调用启动了独立 shell，先重复 PATH 刷新和路径解析。下载、安装、刷新或 `--help` 验证任一步失败时立即停止，不得继续读写知识库或静默改用源码构建。
+
 当 `.repomind/modules/` 下还没有有效模块文档，或现有知识库明显为空时执行本流程。
 
 ## 核心原则
@@ -14,12 +42,13 @@ metadata:
 1. graphify 图谱必须全量重建，不能偷用旧结果。
 2. 知识库写入必须合并，不能覆盖已有人工沉淀。
 3. RepoMind 不再维护集中式 `index.json` 或目录 README 作为路由入口。
-4. 路由依赖每个知识文件自己的 frontmatter 元数据；其中 `description` 是首要索引摘要，`modules` 还要维护关键词。
+4. 路由依赖每个知识文件自己的 frontmatter 元数据；`description` 提供业务语义，`code_refs` 提供稳定代码入口，`keywords` 补充常见叫法。
 
 ```yaml
 ---
 name: "..."
 description: "..."
+code_refs: []
 ---
 ```
 
@@ -29,6 +58,7 @@ description: "..."
 
 - `name`：当前文件的规范名称，供大模型做首轮匹配。
 - `description`：只写 1-2 句话，专门用于“是否该打开这份文档”的判断；这是首要索引摘要，优先级高于正文润色。
+- `code_refs`：可选的稳定函数、方法、类型或接口锚点；Go 使用模块/package/receiver/方法，其他语言使用 `仓库相对文件#类或函数`，不要写行号。
 
 `concepts` 的 `description` 必须包含：
 - 这个概念是什么。
@@ -204,6 +234,8 @@ keywords:
 - "退款"
 - "refund"
 - "回调"
+code_refs:
+- "example/internal/payment.(*CallbackService).HandlePaymentCallback"
 ---
 
 # 支付模块
@@ -232,11 +264,12 @@ keywords:
 合并规则：
 
 - `模块职责`：保留旧描述，只补充新的高置信业务职责。
-- `技术入口`：按文件路径去重；大文件再细到函数名。
+- `技术入口`：优先记录稳定函数、方法、类型或接口，并同步写入 `code_refs`；正文说明从哪里进入以及为什么。
 - `包含能力`：合并去重。
 - `关键约束`：优先保留旧的坑点和边界，再补充新的。
 - `description`：如果模块职责、典型入口或影响面已经变化，必须同步改 frontmatter。
 - `keywords`：如果模块新增别称、入口词、核心业务词或常见搜索词，必须同步更新。
+- `code_refs`：按完整符号去重；只保存高置信当前入口，不保存行号或整条调用链。
 
 ### 6c：troubles
 

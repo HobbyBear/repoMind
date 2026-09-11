@@ -29,6 +29,7 @@ type Document struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Keywords    []string  `json:"keywords,omitempty"`
+	CodeRefs    []string  `json:"code_refs,omitempty"`
 	SizeBytes   int       `json:"size_bytes"`
 	LineCount   int       `json:"line_count"`
 	Sections    []Section `json:"sections"`
@@ -107,25 +108,34 @@ func scanDocuments(projectRoot string) ([]scannedDocument, error) {
 	var docs []scannedDocument
 	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
 		dir := filepath.Join(repomindDir, kind.dirName())
-		entries, err := os.ReadDir(dir)
-		if os.IsNotExist(err) {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			continue
-		}
-		if err != nil {
+		} else if err != nil {
 			return nil, err
 		}
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" || strings.EqualFold(entry.Name(), "README.md") {
-				continue
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
-			rel := filepath.ToSlash(filepath.Join(kind.dirName(), entry.Name()))
+			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".md" || strings.EqualFold(entry.Name(), "README.md") {
+				return nil
+			}
+			relPath, err := filepath.Rel(repomindDir, path)
+			if err != nil {
+				return err
+			}
+			rel := filepath.ToSlash(relPath)
 			doc, err := scanDocument(repomindDir, rel, kind)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if doc != nil {
 				docs = append(docs, *doc)
 			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].File < docs[j].File })
@@ -155,6 +165,7 @@ func scanDocument(repomindDir, rel string, kind Kind) (*scannedDocument, error) 
 			Name:        name,
 			Description: cleanInline(description),
 			Keywords:    normalizeKeywords(kind, name, filepath.Base(rel), fm.Keywords),
+			CodeRefs:    normalizeCodeRefs(fm.CodeRefs),
 			SizeBytes:   len(data),
 			LineCount:   strings.Count(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") + 1,
 			Sections:    sections,
@@ -225,9 +236,9 @@ func renderOverview(catalog Catalog) string {
 	b.WriteString("## 快速导航\n\n")
 	fmt.Fprintf(&b, "- [业务概念](concepts/)：%d 篇，用于理解业务定义、规则与边界。\n", counts[KindConcept])
 	fmt.Fprintf(&b, "- [系统模块](modules/)：%d 篇，用于定位模块职责、能力与技术入口。\n", counts[KindModule])
-	fmt.Fprintf(&b, "- [故障排查](troubles/)：%d 篇，用于复用问题现象、排查步骤与数据查询。\n", counts[KindTrouble])
+	fmt.Fprintf(&b, "- [快速排查](troubles/)：%d 篇，按症状提供首查入口和判断分支，不保存事故档案。\n", counts[KindTrouble])
 	for _, kind := range []Kind{KindModule, KindConcept, KindTrouble} {
-		title := map[Kind]string{KindModule: "模块导航", KindConcept: "业务概念", KindTrouble: "故障排查"}[kind]
+		title := map[Kind]string{KindModule: "模块导航", KindConcept: "业务概念", KindTrouble: "快速排查"}[kind]
 		b.WriteString("\n## " + title + "\n\n")
 		b.WriteString("| 名称 | 简介 |\n|---|---|\n")
 		for _, doc := range catalog.Documents {

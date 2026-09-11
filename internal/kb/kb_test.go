@@ -230,6 +230,7 @@ func TestCreateUsesHumanEditableTemplate(t *testing.T) {
 	projectRoot := t.TempDir()
 	result, err := Create(projectRoot, CreateOptions{
 		Kind: KindTrouble, Name: "充值订单处理中", Description: "充值订单长期处理中时查看。", Keywords: []string{"充值", "订单"},
+		CodeRefs: []string{"example/internal/payment.(*Service).HandleCallback"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -238,10 +239,54 @@ func TestCreateUsesHumanEditableTemplate(t *testing.T) {
 		t.Fatalf("unexpected created file: %#v", result)
 	}
 	path := filepath.Join(projectRoot, filepath.FromSlash(result.File))
-	assertContains(t, path, "## 问题现象")
-	assertContains(t, path, "## 数据查询")
-	assertContains(t, path, "## 结果判断")
+	assertContains(t, path, "## 适用症状")
+	assertContains(t, path, "## 首查步骤")
+	assertContains(t, path, "## 判断分支")
+	assertNotContains(t, path, "## 当前状态")
 	assertContains(t, path, "status: draft")
+	assertContains(t, path, `- "example/internal/payment.(*Service).HandleCallback"`)
+}
+
+func TestValidateWarnsAboutTroubleEventArchiveSections(t *testing.T) {
+	projectRoot := t.TempDir()
+	mustWriteFile(t, filepath.Join(projectRoot, ".repomind", "troubles", "payment.md"), `---
+name: "支付回调异常"
+description: "支付完成但订单仍处于处理中时查看。"
+status: active
+---
+
+# 支付回调异常
+
+## 适用症状
+
+支付完成但订单状态未推进。
+
+## 首查步骤
+
+检查回调消费状态。
+
+## 判断分支
+
+| 证据或条件 | 结论 | 下一步 |
+|---|---|---|
+| 回调未消费 | 消息未送达 | 重试消息 |
+
+## 当前状态
+
+本次事故已经处理。
+
+## 涉及模块
+
+- 支付服务。
+`)
+
+	report, err := Validate(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countIssues(report, "trouble_event_section") != 2 {
+		t.Fatalf("expected two trouble event warnings: %#v", report.Issues)
+	}
 }
 
 func hasIssue(report ValidationReport, code string) bool {
@@ -251,6 +296,16 @@ func hasIssue(report ValidationReport, code string) bool {
 		}
 	}
 	return false
+}
+
+func countIssues(report ValidationReport, code string) int {
+	count := 0
+	for _, issue := range report.Issues {
+		if issue.Code == code {
+			count++
+		}
+	}
+	return count
 }
 
 func TestBuildMetadataReturnsPerFileRoutingEntries(t *testing.T) {
@@ -276,6 +331,8 @@ keywords:
 - "支付"
 - "payment"
 - "refund"
+code_refs:
+- "example/internal/payment.(*Service).HandleCallback"
 ---
 
 # 支付模块
@@ -303,8 +360,32 @@ description: "处理 VIP 购买后权益未及时生效时查看。包含首查�
 	if len(index.Modules[0].Keywords) != 3 || index.Modules[0].Keywords[0] != "支付" || index.Modules[0].Keywords[2] != "refund" {
 		t.Fatalf("unexpected module keywords: %#v", index.Modules[0].Keywords)
 	}
+	if len(index.Modules[0].CodeRefs) != 1 || index.Modules[0].CodeRefs[0] != "example/internal/payment.(*Service).HandleCallback" {
+		t.Fatalf("unexpected module code refs: %#v", index.Modules[0].CodeRefs)
+	}
 	if len(index.Troubles) != 1 || !strings.Contains(index.Troubles[0].Description, "常见根因") {
 		t.Fatalf("unexpected troubles metadata: %#v", index.Troubles)
+	}
+}
+
+func TestFrontmatterParsesInlineKeywordsAndCodeRefsIndependently(t *testing.T) {
+	fm, _, ok := splitFrontMatter(`---
+name: "订单模块"
+description: "订单处理入口。"
+status: active
+keywords: ["订单", "order"]
+code_refs: ["example/internal/order.(*Service).Create", "example/internal/order.(*Service).Cancel"]
+---
+# 订单模块
+`)
+	if !ok {
+		t.Fatal("frontmatter was not parsed")
+	}
+	if len(fm.Keywords) != 2 || fm.Keywords[1] != "order" {
+		t.Fatalf("unexpected keywords: %#v", fm.Keywords)
+	}
+	if len(fm.CodeRefs) != 2 || fm.CodeRefs[1] != "example/internal/order.(*Service).Cancel" {
+		t.Fatalf("unexpected code refs: %#v", fm.CodeRefs)
 	}
 }
 

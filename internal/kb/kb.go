@@ -31,6 +31,7 @@ type MetadataEntry struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Keywords    []string `json:"keywords,omitempty"`
+	CodeRefs    []string `json:"code_refs,omitempty"`
 }
 
 type MetadataIndex struct {
@@ -54,6 +55,7 @@ type frontMatter struct {
 	Name        string
 	Description string
 	Keywords    []string
+	CodeRefs    []string
 	Status      string
 }
 
@@ -147,25 +149,28 @@ func BuildMetadata(projectRoot string) (*MetadataIndex, error) {
 		return nil, err
 	}
 
-	repomindDir := filepath.Join(projectRoot, ".repomind")
 	index := &MetadataIndex{
 		FormatVersion: CurrentFormatVersion,
 		Concepts:      make([]MetadataEntry, 0),
 		Modules:       make([]MetadataEntry, 0),
 		Troubles:      make([]MetadataEntry, 0),
 	}
-	for _, kind := range []Kind{KindConcept, KindModule, KindTrouble} {
-		items, err := readMetadataDir(repomindDir, kind)
-		if err != nil {
-			return nil, err
+	docs, err := scanDocuments(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, doc := range docs {
+		item := MetadataEntry{
+			File: doc.File, Kind: doc.Kind, Status: doc.Status, Name: doc.Name,
+			Description: doc.Description, Keywords: doc.Keywords, CodeRefs: doc.CodeRefs,
 		}
-		switch kind {
+		switch doc.Kind {
 		case KindConcept:
-			index.Concepts = items
+			index.Concepts = append(index.Concepts, item)
 		case KindModule:
-			index.Modules = items
+			index.Modules = append(index.Modules, item)
 		case KindTrouble:
-			index.Troubles = items
+			index.Troubles = append(index.Troubles, item)
 		}
 	}
 	return index, nil
@@ -186,48 +191,6 @@ func Normalize(projectRoot string) (*MigrationResult, error) {
 	}
 	sort.Strings(result.Migrated)
 	return result, nil
-}
-
-func readMetadataDir(repomindDir string, kind Kind) ([]MetadataEntry, error) {
-	dir := filepath.Join(repomindDir, kind.dirName())
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-
-	items := make([]MetadataEntry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" || strings.EqualFold(entry.Name(), "README.md") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			return nil, err
-		}
-		fm, body, _ := splitFrontMatter(string(data))
-		name := fm.Name
-		if name == "" {
-			name = deriveName(entry.Name(), body)
-		}
-		description := fm.Description
-		if description == "" {
-			description = deriveDescription(kind, name, body, "")
-		}
-		items = append(items, MetadataEntry{
-			File:        filepath.ToSlash(filepath.Join(kind.dirName(), entry.Name())),
-			Kind:        kind,
-			Status:      normalizeStatus(fm.Status),
-			Name:        name,
-			Description: description,
-			Keywords:    normalizeKeywords(kind, name, entry.Name(), fm.Keywords),
-		})
-	}
-	return items, nil
 }
 
 func ensureLegacyModuleDocs(repomindDir string, legacyDescriptions map[string]string, result *MigrationResult) error {
@@ -308,14 +271,16 @@ func normalizeDir(repomindDir string, kind Kind, legacyDescriptions map[string]s
 		}
 
 		keywords := normalizeKeywords(kind, name, entry.Name(), fm.Keywords)
+		codeRefs := normalizeCodeRefs(fm.CodeRefs)
 		status := normalizeStatus(fm.Status)
-		if hasFrontMatter && fm.Name == name && fm.Description == description && fm.Status == status && sameStrings(fm.Keywords, keywords) {
+		if hasFrontMatter && fm.Name == name && fm.Description == description && fm.Status == status && sameStrings(fm.Keywords, keywords) && sameStrings(fm.CodeRefs, codeRefs) {
 			continue
 		}
 		if err := fsutil.WriteFile(path, renderDocument(frontMatter{
 			Name:        name,
 			Description: description,
 			Keywords:    keywords,
+			CodeRefs:    codeRefs,
 			Status:      status,
 		}, body)); err != nil {
 			return err
@@ -338,6 +303,12 @@ func renderDocument(fm frontMatter, body string) string {
 		lines = append(lines, "keywords:")
 		for _, keyword := range fm.Keywords {
 			lines = append(lines, "- "+strconv.Quote(cleanInline(keyword)))
+		}
+	}
+	if len(fm.CodeRefs) > 0 {
+		lines = append(lines, "code_refs:")
+		for _, codeRef := range fm.CodeRefs {
+			lines = append(lines, "- "+strconv.Quote(cleanInline(codeRef)))
 		}
 	}
 	lines = append(lines, "---")
@@ -371,6 +342,8 @@ func splitFrontMatter(content string) (frontMatter, string, bool) {
 				value := decodeScalar(strings.TrimSpace(strings.TrimPrefix(line, "- ")))
 				if currentListKey == "keywords" && cleanInline(value) != "" {
 					fm.Keywords = append(fm.Keywords, cleanInline(value))
+				} else if currentListKey == "code_refs" && cleanInline(value) != "" {
+					fm.CodeRefs = append(fm.CodeRefs, cleanInline(value))
 				}
 				continue
 			}
@@ -399,6 +372,16 @@ func splitFrontMatter(content string) (frontMatter, string, bool) {
 			for _, keyword := range parseInlineKeywords(value) {
 				if cleanInline(keyword) != "" {
 					fm.Keywords = append(fm.Keywords, cleanInline(keyword))
+				}
+			}
+		case "code_refs":
+			if value == "" {
+				currentListKey = "code_refs"
+				continue
+			}
+			for _, codeRef := range parseInlineKeywords(value) {
+				if cleanInline(codeRef) != "" {
+					fm.CodeRefs = append(fm.CodeRefs, cleanInline(codeRef))
 				}
 			}
 		case "status":
@@ -481,8 +464,8 @@ func deriveDescription(kind Kind, name, body, legacyDescription string) string {
 		}
 		return truncate(desc, 120)
 	case KindTrouble:
-		symptom := firstNonEmpty(extractSection(body, "问题"), extractSection(body, "问题现象"), extractSection(body, "现象"))
-		root := firstNonEmpty(extractSection(body, "根因"), extractSection(body, "当前排查路径"), extractSection(body, "排查路径"))
+		symptom := firstNonEmpty(extractSection(body, "适用症状"), extractSection(body, "问题"), extractSection(body, "问题现象"), extractSection(body, "现象"))
+		root := firstNonEmpty(extractSection(body, "首查步骤"), extractSection(body, "判断分支"), extractSection(body, "根因"), extractSection(body, "当前排查路径"), extractSection(body, "排查路径"))
 		switch {
 		case symptom != "" && root != "":
 			return truncate(fmt.Sprintf("处理%s时查看。首查方向/常见根因：%s。", symptom, root), 120)
@@ -659,6 +642,20 @@ func normalizeKeywords(kind Kind, name, fileName string, existing []string) []st
 		appendKeyword(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
 	}
 	return keywords
+}
+
+func normalizeCodeRefs(existing []string) []string {
+	seen := make(map[string]bool)
+	refs := make([]string, 0, len(existing))
+	for _, codeRef := range existing {
+		codeRef = cleanInline(codeRef)
+		if codeRef == "" || seen[codeRef] {
+			continue
+		}
+		seen[codeRef] = true
+		refs = append(refs, codeRef)
+	}
+	return refs
 }
 
 func sameStrings(left, right []string) bool {
