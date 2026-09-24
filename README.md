@@ -55,16 +55,16 @@ repomind install
 
 安装后无需手动操作，AI 自动执行：
 
-- **编码前** — `repomind-query`：通过元数据匹配业务模块、定位关键代码
+- **编码前** — `repomind-query`：直接读取人工 Markdown 的 frontmatter，选择少量业务知识并定位关键代码
 - **编码后** — `repomind-summary`：智能判断是否有新知识需沉淀，按需更新
 - **随手记** — 用户说"记一下 / 总结到知识库"，自动分类写入 concepts / modules / troubles
 - **PRD 处理** — `repomind-prd`：从需求文档提取业务概念
 
-首次安装后知识库为空，在 Claude Code 中执行 `/repomind-init`（Codex 中 `$repomind-init`），AI 会自动运行 graphify 构建图谱并初始化业务卡片。
+首次安装后知识库为空，在 Claude Code 中执行 `/repomind-init`（Codex 中 `$repomind-init`），AI 会直接分析仓库和已有人工文档，保守初始化业务卡片。
 
 `repomind-query` 和 `repomind-summary` 的唯一源码位于 RepoMind，并被编译进二进制。FixForge 等外部系统只调用已部署的 skill，负责页面、对话和权限；不复制检索或总结规则。
 
-所有内置 Skill 执行前都会验证 `repomind` CLI。缺失时使用官方安装脚本下载，并立即刷新当前进程 PATH、解析 CLI 绝对路径后继续；安装或验证失败时停止，不执行知识库读写。
+所有内置 Skill 都使用平台原生文件搜索、读取和编辑能力，不调用 `repomind kb-*`、生成索引或外部图谱。CLI 只负责安装、更新，以及人类或 CI 主动执行的可选检查。
 
 ## 知识目录
 
@@ -104,11 +104,11 @@ code_refs:
 | `module` | `模块职责`、`包含能力`、`技术入口` | `关键约束`、`关联知识` |
 | `trouble` | `适用症状`、`首查步骤`、`判断分支` | `修复原则`、`验证方式`、`容易误判`、`关联知识` |
 
-旧标题仍可读取，`kb-validate` 会提示逐步迁移，不会因为一次升级整体覆盖人工正文。
+旧标题仍可读取；Skill 在实际更新文档时逐步迁移，不会因为一次升级整体覆盖人工正文。
 
-## 外部调用
+## 可选 CLI
 
-外部系统把 RepoMind 当作数据源时，使用以下稳定入口：
+以下命令供人类、CI 或独立外部系统按需使用。内置 Skill 不依赖这些命令：
 
 ```bash
 repomind kb-build
@@ -128,7 +128,7 @@ repomind kb-new --kind trouble --name "充值订单一直处理中" \
 - `kb-validate`：检查格式、关键词和体积限制；`--file` 只验收本次文件，`--strict` 将 warning 也视为失败。
 - `kb-new`：生成产品、运营可直接填写的固定模板。
 
-summary 写入后必须对本次文件执行 `kb-validate --strict --file <文件>`，通过后才能完成写入流程。
+Skill 写入后会直接重新读取完整文件，按相同规则完成结构、体积、证据和范围自检；CLI 校验可以作为额外的 CI 门禁。
 
 ## 压缩规则
 
@@ -153,7 +153,7 @@ repomind kb-new       # 按模板新增知识
 repomind compact-prompt # 输出压缩 Skill，供外部系统调用
 ```
 
-压缩由 `repomind-compact` Skill 直接识别用户给出的范围。指定文件或目录时只读取、合并和校验这些文件；要求领域合并时先从 frontmatter 召回候选，再把同一症状、业务对象和首查入口下的不同根因整理成一篇判断树；没有指定范围时才执行整库精简：
+压缩由 `repomind-compact` Skill 直接识别用户给出的范围。指定文件或目录时只读取、合并和自检这些文件；要求领域合并时先从 frontmatter 召回候选，再把同一症状、业务对象和首查入口下的不同根因整理成一篇判断树；没有指定范围时才执行整库精简：
 
 ```text
 $repomind-compact 合并并精简 .repomind/troubles/a.md 和 .repomind/troubles/b.md

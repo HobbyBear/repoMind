@@ -32,12 +32,9 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read installed query skill: %v", err)
 	}
-	if !strings.Contains(string(query), `repomind kb-metadata --query "<用户原始问题，保留函数名和业务词>" --limit 5`) {
-		t.Fatalf("query skill does not use deterministic candidate recall")
-	}
-	for _, unwanted := range []string{"kb-build", "kb-search"} {
-		if strings.Contains(string(query), unwanted) {
-			t.Fatalf("query skill still references %q", unwanted)
+	for _, want := range []string{"平台原生文件搜索", "code_refs", "每个激活的知识类型最多打开 1-3 篇正文", "直接执行 Summary Gate", "不得创建中转文件"} {
+		if !strings.Contains(string(query), want) {
+			t.Fatalf("query skill missing direct workflow rule %q", want)
 		}
 	}
 
@@ -45,14 +42,9 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read installed summary skill: %v", err)
 	}
-	for _, want := range []string{"kb-validate", "--strict", "本次写入文件", "kb-metadata --query", "`SKIP`", "`UPDATE`", "`MERGE`", "`CREATE`", "code_refs", "Trouble 二次准入门槛", "裸日志", "低于 70 直接 `DISCARD`", "## 判断分支"} {
+	for _, want := range []string{"`SKIP`", "`UPDATE`", "`MERGE`", "`CREATE`", "code_refs", "Trouble 二次准入", "裸日志", "低于 70/100 时丢弃", "## 判断分支", "文件超过 8 KiB", "超过 12 KiB 必须立即拆分", "至少有一个有效判断分支", "直接自检"} {
 		if !strings.Contains(string(summary), want) {
 			t.Fatalf("summary skill missing validation gate %q", want)
-		}
-	}
-	for _, unwanted := range []string{"kb-build", "kb-search", "--expect"} {
-		if strings.Contains(string(summary), unwanted) {
-			t.Fatalf("summary skill still references %q", unwanted)
 		}
 	}
 
@@ -63,25 +55,27 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 	for _, want := range []string{
 		"局部模式",
 		"硬性 allowlist",
-		"领域合并模式",
-		"Trouble 两阶段流程",
-		"用户症状族 + 业务对象 + 公共首查入口",
+		"领域模式",
+		"Trouble 整体治理模式",
+		"两阶段流程",
+		"用户症状族相同或高度重叠",
 		"合并矩阵",
-		"kb-metadata --similar-to",
-		"kb-audit --compare-to",
-		"potentially_lost_anchors",
-		"证据锚点保留率不低于 80%",
-		"Trouble 事件升维规则",
-		"认知墓碑",
-		"`trouble` 保留为按症状召回的快速排查指南",
+		"压缩前事实台账",
+		"证据锚点至少保留 80%",
+		"Trouble 事件升维与聚类",
+		"稳定事实必须映射到",
+		"最终有效结论裁决",
+		"全部稳定事实均已映射",
 		"首屏必须能完成症状确认和第一次分流",
-		"`SKIP`",
-		"`UPDATE`",
+		"`KEEP`",
+		"`REPLACE`",
+		"`MOVE`",
 		"`MERGE`",
-		"`CREATE`",
-		"不得把原本嵌套的 `###` 无理由提升为 `##`",
-		"`kb-validate` 通过只代表格式合格",
-		"不要执行 `kb-build`",
+		"`SPLIT`",
+		"`DISCARD`",
+		"文件超过 12 KiB：必须立即拆分",
+		"单章节超过 4 KiB：必须立即拆分",
+		"标题层级保持正确",
 		"只生成可审阅草案",
 	} {
 		if !strings.Contains(compact, want) {
@@ -94,14 +88,18 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read installed %s skill: %v", skillName, err)
 		}
-		for _, unwanted := range []string{"project.md", "project_knowledge", "项目概览", "新人入口"} {
+		for _, unwanted := range []string{
+			"project.md", "project_knowledge", "项目概览", "新人入口",
+			"command -v repomind", "install.sh | bash", "Get-Command repomind", "install.ps1 | iex",
+			"repomind kb-", "kb-metadata", "kb-build", "kb-validate", "kb-audit", "graphify", ".query-findings.json",
+		} {
 			if strings.Contains(string(data), unwanted) {
 				t.Fatalf("%s skill still references %q", skillName, unwanted)
 			}
 		}
-		for _, want := range []string{"command -v repomind", "install.sh | bash", `export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"`, "Get-Command repomind", "install.ps1 | iex", "GetEnvironmentVariable", "当前进程必须立即刷新 PATH", "$REPOMIND_BIN", "$repomindBin"} {
+		for _, want := range []string{"平台原生文件搜索", "不依赖 RepoMind CLI"} {
 			if !strings.Contains(string(data), want) {
-				t.Fatalf("%s skill missing CLI bootstrap rule %q", skillName, want)
+				t.Fatalf("%s skill missing native workflow rule %q", skillName, want)
 			}
 		}
 	}

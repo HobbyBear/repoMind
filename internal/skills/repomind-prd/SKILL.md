@@ -1,244 +1,132 @@
 ---
 name: repomind-prd
-description: 同步历史 PRD/需求文档。先修正旧知识文件格式，再从 PRD 中提取业务概念，对照当前代码确认实际实现，合并更新 .repomind/concepts/ 的业务卡片与元数据；必要时再交给 repomind-summary 补充模块侧知识。
+description: 从 PRD、需求说明或产品文档中提取稳定业务概念、规则和边界，直接与 .repomind 人工知识合并。使用平台原生文件搜索与读写，不依赖 RepoMind CLI、中转 JSON、生成索引或外部图谱。
 metadata:
-  short-description: 从 PRD 提取业务知识
+  short-description: 从 PRD 沉淀业务概念
 ---
 
-# RepoMind PRD 业务知识补充
-
-## CLI 环境预检
-
-执行本 Skill 的任何其他步骤前，先检查 RepoMind CLI；已存在时只验证，不下载或更新。
-
-macOS / Linux：
-
-```bash
-if ! command -v repomind >/dev/null 2>&1; then
-  curl -fsSL https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.sh | bash
-  export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
-  hash -r 2>/dev/null || true
-fi
-REPOMIND_BIN="$(command -v repomind)"; "$REPOMIND_BIN" --help >/dev/null
-```
-
-Windows PowerShell：
-
-```powershell
-if (-not (Get-Command repomind -ErrorAction SilentlyContinue)) {
-  iwr -useb https://raw.githubusercontent.com/HobbyBear/repoMind/master/install.ps1 | iex
-  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-}
-$repomindBin = (Get-Command repomind -ErrorAction SilentlyContinue).Source; if (-not $repomindBin) { throw "RepoMind CLI 安装后仍不在 PATH" }
-& $repomindBin --help | Out-Null
-```
-
-只使用上述 RepoMind 官方安装地址。不得只修改 shell 配置或系统环境变量后等待新终端：当前进程必须立即刷新 PATH 并解析出绝对路径。后续代码块中的 `repomind` 应使用已解析的 `$REPOMIND_BIN` / `$repomindBin` 执行；若新的工具调用启动了独立 shell，先重复 PATH 刷新和路径解析。下载、安装、刷新或 `--help` 验证任一步失败时立即停止，不得继续读写知识库或静默改用源码构建。
-
-## 触发条件
-
-只有当用户明确提供了历史 PRD / 需求文档 / 产品描述，并希望把它沉淀为业务知识时才执行。
-
-不要在普通编码前分析、未来需求讨论、纯业务问答里自动触发。
+# RepoMind PRD 业务知识提取
 
 ## 核心原则
 
-1. PRD 代表历史业务意图；当前代码代表当前事实。
-2. 卡片写“当前代码实际做了什么”，不是照抄 PRD。
-3. PRD 和当前代码不一致时，以当前代码为准，并记录差异。
-4. 每次执行前先修正旧知识文件格式，保证后续都按新模板工作。
+1. PRD 是业务意图证据，不自动代表当前实现已经完成。
+2. 只提取跨任务可复用的概念、规则、状态、边界和历史原因。
+3. 页面布局、排期、Owner、验收进度和一次性文案不进入长期知识。
+4. 直接读取和更新人工 Markdown，不调用 RepoMind CLI、生成目录或外部图谱。
+5. 默认只写 `concepts`；只有 PRD 明确给出稳定模块职责或排查方法时才更新对应类型。
 
-## 当前知识文件格式
+## 步骤 1：读取输入
 
-所有 concept 文档都必须以以下 frontmatter 开头：
+完整读取用户指定的 PRD 或需求文本，记录：
 
-```yaml
----
-name: "..."
-description: "..."
----
-```
+- 产品目标和业务对象。
+- 术语定义、角色、状态和生命周期。
+- 稳定业务规则、资格条件、限制和例外。
+- 与相邻概念的区别。
+- 明确的历史原因和兼容约束。
+- 已确认事实与尚未确认假设。
 
-`description` 必须包含：
+不得把“计划支持”“可能”“待确认”改写为已经生效的事实。
 
-- 这个概念是什么
-- 它出现在哪些业务场景
-- 它与哪个相邻概念容易混淆，或关键边界是什么
+## 步骤 2：读取现有候选
 
-## 步骤 0：先修正旧格式并读取元数据
+使用平台原生文件搜索：
 
-先执行：
+1. 只读取 `.repomind/concepts/**/*.md` 的 frontmatter 和标题。
+2. 按 `name`、`description`、`keywords` 和业务对象选择 1-3 篇候选。
+3. 需要判断合并时再读取候选正文。
+4. 如果 PRD 提到稳定代码符号，可在 module frontmatter 中按 `code_refs` 查找对应模块。
 
-```bash
-repomind kb-build
-repomind kb-metadata
-```
+不要为了保险读取整个知识库正文。
 
-规则：
+## 步骤 3：筛选业务概念
 
-- 如果旧 concept 卡片缺 frontmatter，先修复再继续。
-- 后续所有增量更新都必须保持新格式，不得回写旧结构。
+候选概念必须满足：
 
-## 步骤 1：获取输入
+- 能脱离当前 PRD 独立解释。
+- 对未来需求、问答、实现或排查仍有帮助。
+- 有明确业务定义或规则，而不只是功能标题。
+- 可以说明适用场景、边界或易混淆对象。
 
-用户提供 PRD，支持：
+以下内容丢弃：
 
-1. 文件路径
-2. 直接粘贴
-3. URL
+- 页面控件、视觉稿细节和临时运营文案。
+- 当前版本排期、Owner、deadline 和任务状态。
+- 单个接口字段、函数步骤和实现清单。
+- 没有确认的产品设想。
 
-如果用户给的是文件路径，直接读取内容。
+## 步骤 4：选择文档动作
 
-## 步骤 2：识别业务概念
+- `SKIP`：现有概念已经准确覆盖。
+- `UPDATE`：PRD 给出了更具体、更新或更权威的定义。
+- `MERGE`：同一概念的规则和边界互补。
+- `CREATE`：现有候选均不是同一概念，并能说明差异。
+- `DISCARD`：不具备长期业务价值。
 
-逐段标记 PRD 中出现的概念，重点找：
+发生冲突时：
 
-- 业务对象
-- 角色/身份
-- 业务流程
-- 业务规则
-- 易混淆概念
+- 用户明确确认的新结论优先。
+- PRD 与当前代码冲突时，分别标注“产品预期”和“当前实现”，不能静默合并。
+- 证据不足时保留待确认，不覆盖旧结论。
 
-输出一份内部清单，记录：
-
-- 概念名
-- 类型
-- PRD 来源章节
-- 一句话说明
-
-## 步骤 3：先和现有卡片对比
-
-不要一上来就改文档。先用 `kb-metadata` 输出的 `concepts[].name/description` 做首轮匹配：
-
-- 已有等价卡片 → 标记“已存在”
-- 已有卡片但需要补充 → 标记“待合并”
-- 已有卡片但和代码事实冲突 → 标记“冲突修正”
-- 没有卡片 → 标记“待新建”
-
-只有在 metadata 级别命中后，才打开对应 concept 正文。
-
-## 步骤 4：对照当前代码确认事实
-
-按以下顺序核对：
-
-1. 相关 concept 卡片
-2. 相关 module 文档
-3. graphify / 当前代码
-
-只从代码中提炼这些维度：
-
-- 触发时机
-- 用户侧效果
-- 数据来源
-- 数据加工链路
-- 关键边界条件
-
-不要把 if/else、SQL、字段名、函数细节抄进 concept 卡片。
-
-判断规则：
-
-| 情况 | 卡片处理 |
-|------|----------|
-| PRD 说 X，代码也做 X | 写 X |
-| PRD 说 X，代码做 Y | 写 Y，并注明“PRD 说 X，当前实现为 Y” |
-| PRD 说 X，代码找不到实现 | 标记“当前代码未找到实现，待核对” |
-
-## 步骤 5：创建或更新 concept 卡片
-
-概念卡片模板：
+## 步骤 5：写入 Concept
 
 ```markdown
 ---
-name: "Pro 角色"
-description: "高级用户身份概念。用于判断权益范围、典型触发场景，以及和 VIP 的区别。"
+name: "概念名"
+description: "它是什么、在哪些业务语境出现以及核心边界。"
 status: active
+keywords: []
+code_refs: []
 ---
 
-# Pro 角色
+# 概念名
 
-## 这是什么
-
-（给出一句话业务定义，回答“这个概念本身是什么”）
+## 是什么
 
 ## 核心规则
 
-（写稳定业务规则、边界条件、负向规则；按规则主题归并，不要抄代码分支）
-
 ## 适用场景与边界
 
-（写“不是谁”“区别于谁”“最容易被误解成什么”）
-
 ## 关联知识
-
-（链接相关 concept/module/trouble）
-
-## 来源
-
-（只记录来源和本次采纳点，例如“历史 PRD 第 2 节 + 当前代码核对结果”，不要贴长原文）
 ```
 
-更新要求：
+要求：
 
-- 只增量合并，不整体覆盖。
-- `name` 保持概念规范名。
-- 如果新增了适用场景、边界或混淆点，必须同步更新 `description`。
-- `## 来源` 只记录“来自哪里 + 本次采纳了什么”，不重复追加相同来源。
+- `description` 用于判断是否值得打开，不写代码路径和字段。
+- `keywords` 只保留用户真实会搜索的名称、别称和缩写。
+- 规则写当前有效结论；修订历史交给 Git。
+- 未落地的产品预期必须明确标注，不能与当前事实混写。
 
-去重规则：
+## 步骤 6：同步相关模块
 
-1. 同义概念合并到一张卡
-2. 同类规则合并到同一主题
-3. 语义等价的规则不重复写
-4. 同一来源不重复追加
+只有 PRD 确认改变了模块职责、影响面或稳定入口时才更新 module：
 
-## 步骤 6：输出 PRD 处理摘要
+- 更新 `模块职责`、`包含能力` 或 `关键约束`。
+- 同步调整 `description/keywords/code_refs`。
+- 不把 PRD 全文复制进 module。
 
-摘要至少包含：
+PRD 本身通常不产生 trouble。只有已经形成可复用症状、证据和判断路径时，才按 `repomind-summary` 的 Trouble 二次准入处理。
 
-- 输入来源
-- 识别到多少概念
-- 新建 / 合并 / 已存在 / 冲突修正 / 待核对 / 跳过 的数量
-- 需要继续确认的点
+## 步骤 7：压缩与自检
 
-## 步骤 7：自动调用 summary
+逐个重新读取本轮文件并确认：
 
-只要本次新建或更新了 concept 卡片，就写入 `.repomind/.query-findings.json` 并调用 `repomind-summary`。
+- frontmatter 完整，active 文档没有占位内容。
+- `description` 不超过 120 个字符。
+- `keywords` 最多 8 个，单个不超过 32 个字符。
+- 必备章节存在且有实际内容。
+- 没有排期、Owner、修订流水和重复规则。
+- 文件超过 8 KiB 时继续精简；超过 12 KiB 必须拆分。
+- 单章节超过 2 KiB 时继续精简；超过 4 KiB 必须拆分。
+- 每条写入事实都能追溯到 PRD、用户确认或当前代码。
 
-模板：
+## 步骤 8：输出摘要
 
-```bash
-cat > .repomind/.query-findings.json << 'JSONEOF'
-{
-  "trigger": "PRD 处理",
-  "intent": "从历史 PRD 提取业务概念并对照当前代码",
-  "known_modules": [],
-  "new_findings": [
-    {
-      "type": "concept_knowledge",
-      "module": "",
-      "file": "concepts/xxx.md",
-      "content": "从 PRD 提取并经当前代码对照后的业务概念"
-    }
-  ],
-  "needs_summary": true
-}
-JSONEOF
-```
+说明：
 
-然后调用：
-
-```text
-Skill: repomind-summary
-```
-
-这里同样是**同步阻塞步骤**：
-
-- 不要输出“summary 已经在跑”然后继续回答用户
-- 必须等 `repomind-summary` 真正完成后，再结束 PRD 流程
-- 如果当前平台不支持在 skill 内再次显式调用 skill，就在当前流程中直接执行 `repomind-summary` 的步骤，不要只写一句移交说明
-
-这里的 summary 负责：
-
-- 判断是否还需要同步模块文档
-- 判断 concept / module 的 frontmatter `description` 是否需要更新
-- 保持知识库格式为当前版本
+- 提取了哪些概念和规则。
+- 各自执行 `SKIP/UPDATE/MERGE/CREATE/DISCARD` 的结果。
+- 哪些属于产品预期，哪些已被当前实现验证。
+- 更新了哪些 concept/module 元数据。
+- 哪些冲突或假设仍待用户确认。

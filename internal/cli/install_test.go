@@ -62,19 +62,19 @@ func TestRepomindInstructionsRequireSummaryGateForCorrections(t *testing.T) {
 		"不能因为“只是写代码”就跳过 gate",
 		"每次代码修改、生成文件、修复 bug 或跑完验证后，最终答复前必须触发一次 summary gate",
 		"用户纠正 AI 或 RepoMind 的业务结论、模块判断或排查结论时",
-		"只要用户给出业务纠错或修订结论",
+		"用户纠正业务事实、模块归属、入口位置、排查根因或历史结论时",
 		"用户明确要求沉淀知识时",
-		"不直接修改自动生成的 README/catalog",
-		"repomind kb-metadata --query \"<用户原始问题>\" --limit 5",
-		"code_refs/name/description/keywords/score/reasons",
-		"通过后才能清理 findings",
-		"repomind kb-validate --strict --file <写入文件>",
+		"不直接修改生成目录",
+		"按 `code_refs/name/description/keywords` 选择每种类型最相关的 1-3 篇",
+		"不调用 RepoMind CLI、生成索引或外部图谱",
+		"不能创建中转文件或描述成后台任务",
+		"文件超过 8 KiB 必须继续精简，超过 12 KiB 必须立即拆分",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("repomind instructions missing %q:\n%s", want, content)
 		}
 	}
-	for _, unwanted := range []string{"kb-search", "summary 写入后必须执行 `repomind kb-build`", "project.md", "项目概览"} {
+	for _, unwanted := range []string{"kb-metadata", "kb-validate", "kb-build", "graphify", ".query-findings.json", "project.md", "项目概览"} {
 		if strings.Contains(content, unwanted) {
 			t.Fatalf("repomind instructions still contain %q:\n%s", unwanted, content)
 		}

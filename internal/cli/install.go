@@ -130,7 +130,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Println(".claude/rules/repomind.md — Claude Code 编码前必读知识库")
 	fmt.Println("AGENTS.md — Codex 编码前必读知识库")
 	fmt.Println()
-	fmt.Println("知识路由由 Skill 调用 kb-metadata 只读召回候选，再按需读取相关正文。")
+	fmt.Println("知识路由由 Skill 直接读取人工 Markdown 的 frontmatter，再按需读取少量正文。")
 	fmt.Println("已自动 git add 所有 RepoMind 管理的文件。")
 	fmt.Println("提交时 hook 会自动更新 AST 图谱。")
 	return nil
@@ -299,9 +299,9 @@ func repomindInstructionContent() string {
 
 - 任何涉及代码、业务逻辑、项目结构、异常排查，需求分析，方案设计的问题，都必须先查 RepoMind，再回答或改代码。
 - RepoMind 查出来的内容不是“参考一下就算了”，而是回答结论、修改决策、排查路径的凭证和上下文依据。
-- 命中的 concepts / modules / troubles 以及必要的 graphify 结构结果，必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
-- 如果 RepoMind 命中结果不足以支持结论，必须明确说“当前证据不足”，并继续补查代码或图谱。
-- RepoMind Skill 使用现有 {{BT}}kb-metadata --query{{BT}} 对 {{BT}}code_refs/name/description/keywords{{BT}} 做只读 Top-K 召回，不依赖集中式 {{BT}}index.json{{BT}}、向量数据库或多个外部查询命令。
+- 命中的 concepts / modules / troubles 必须真正进入回答或实现判断；不能查完不用，也不能绕开检索结果直接下结论。
+- 如果 RepoMind 知识不足以支持结论，必须明确说“当前证据不足”，再使用平台原生代码搜索读取最小代码证据。
+- RepoMind Skill 直接读取人工 Markdown 的 frontmatter 和正文，不调用 RepoMind CLI、生成索引或外部图谱。
 
 ## repomind-query 触发时机
 
@@ -315,18 +315,17 @@ func repomindInstructionContent() string {
 
 ## repomind-query 使用要求
 
-1. 先执行 {{BT}}repomind kb-metadata --query "<用户原始问题>" --limit 5{{BT}}，按返回的 {{BT}}code_refs/name/description/keywords/score/reasons{{BT}} 选出少量 concepts / modules / troubles，再打开相关正文；不要自行组合 find/rg/sed 扫全库元数据。需要代码证据时先用 {{BT}}code_refs{{BT}} 或模块文档入口配合平台代码搜索工具取小上下文：Claude Code 用 Grep 定位后 Read 最小片段，Codex/终端用 {{BT}}rg -n -C 3{{BT}}。上下文足够回答或修改时停止扩展读取。只有需要调用链、影响面或跨模块关系时，才补查 {{BT}}graphify query{{BT}} / {{BT}}explain{{BT}} / {{BT}}path{{BT}}。
+1. 使用平台原生文件搜索只读取相关目录 Markdown 的 frontmatter 和标题，按 {{BT}}code_refs/name/description/keywords{{BT}} 选择每种类型最相关的 1-3 篇，再打开正文。
 2. 最终回答必须基于命中的知识组织，而不是把检索结果放在一边。
 3. 如果命中了业务卡片，回答里要体现业务定义、边界或预期。
 4. 如果命中了模块文档，回答或改动方案里要体现关键入口、影响范围或注意事项。
 5. 如果命中了排查记录，回答里要体现历史现象、判断顺序或常见根因。
 6. 如果命中内容和当前代码冲突，以当前代码为准，并明确指出冲突。
-7. 需要调用链、调用方或被调用方时，优先使用 graphify 的结构化结果；AI 不能凭少量源码片段声称完整 callers / callees。
-8. 如果本轮代码定位不是直接通过现有模块文档完成，而是绕过模块文档去查代码搜索 / graphify / source 才定位到实现，那么本轮结束前必须触发 {{BT}}repomind-summary{{BT}}，把缺失的入口信息或模块关键词补回 RepoMind。
-9. 只要用户给出业务纠错或修订结论，就必须把纠错内容写入 {{BT}}.repomind/.query-findings.json{{BT}}，并令 {{BT}}needs_summary = true{{BT}}。
-10. 每次执行过 {{BT}}repomind-query{{BT}} 后，最终答复前都必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；即使 gate 最终判定无需更新，也不能跳过 gate。
-11. 每次完成代码修改、生成文件、修复 bug 或跑完验证后，最终答复前也必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；不能因为“只是写代码”就跳过 gate。
-12. {{BT}}repomind-summary{{BT}} 是同步阻塞步骤：不要说“summary 正在运行”就继续回答；必须等它真正完成。如果当前平台不能显式嵌套调用 skill，就在当前流程里直接执行 summary 步骤。
+7. 需要代码证据时，按 {{BT}}code_refs{{BT}}、函数名或业务词读取最小上下文；没有穷尽证据时不得声称完整调用链。
+8. 如果本轮绕过了现有模块文档才定位到实现，结束前必须触发 {{BT}}repomind-summary{{BT}}，把缺失入口、修改场景或关键词补回 RepoMind。
+9. 每次执行过 {{BT}}repomind-query{{BT}} 后，最终答复前都必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；即使 gate 最终判定无需更新，也不能跳过 gate。
+10. 每次完成代码修改、生成文件、修复 bug 或跑完验证后，最终答复前也必须进入一次 {{BT}}repomind-summary{{BT}} 的 summary gate；不能因为“只是写代码”就跳过 gate。
+11. {{BT}}repomind-summary{{BT}} 是同步阻塞步骤：不能创建中转文件或描述成后台任务；必须在当前上下文完成。
 
 ## repomind-summary 触发时机
 
@@ -339,18 +338,18 @@ func repomindInstructionContent() string {
 5. 用户明确要求沉淀知识时，例如“记一下”“总结到知识库”“以后遇到这个要注意”“这个经验要沉淀”。
 6. 业务讨论、需求分析、PRD 同步后，只要确认了新的概念边界、规则、历史原因或业务意图。
 7. 排查结束后，只要形成了可复用的现象、判断路径、根因、验证方式或修订结论。
-8. 本轮存在绕过现有模块文档、依赖代码搜索 / graphify / source 才完成代码定位时，即使最后只补入口或关键词，也必须触发。
+8. 本轮存在绕过现有模块文档、依赖直接代码搜索才完成定位时，即使最后只补入口或关键词，也必须触发。
 9. 本轮识别出某个模块应新增、删除或收紧 {{BT}}keywords{{BT}} 时，也必须触发。
 
 ## repomind-summary 使用要求
 
 1. 先做 summary gate，再决定是否落库。
 2. 只沉淀代码不容易直接看出的知识，不重复写显式源码细节。
-3. summary 写入后必须执行 {{BT}}repomind kb-validate --strict --file <写入文件>{{BT}}；通过后才能清理 findings。全库历史警告不能阻断本次写入，但本次文件必须无 warning/error。关键词超过 8 个、文件超过 12 KiB 或章节超过 4 KiB 时按校验建议压缩拆分。
+3. summary 直接重新读取本轮文件做自检：关键词最多 8 个，文件超过 8 KiB 必须继续精简，超过 12 KiB 必须立即拆分；章节超过 2 KiB 必须继续精简，超过 4 KiB 必须立即拆分。
 4. 发现新知识后不要拖到以后；本轮结束前就闭环到 RepoMind。
 5. 如果本轮通过直接代码查找才找到答案，至少要把“缺失的模块入口 / 新增关键词 / 应补的常见修改场景”总结回 RepoMind。
 6. 如果本轮是用户纠错，必须把旧说法、新说法、证据来源和影响范围写入对应 concept/module/trouble；不能只在对话里口头承认。
-7. 如果本轮是用户手动要求沉淀，必须判断它更像业务概念、模块修改经验还是排查经验，只写入 concepts/modules/troubles，不直接修改自动生成的 README/catalog。
+7. 如果本轮是用户手动要求沉淀，必须判断它更像业务概念、模块修改经验还是排查经验，只写入 concepts/modules/troubles，不直接修改生成目录。
 8. 代码写完后的 summary gate 也必须同步完成；即使最终不写库，也要完成 gate 判定后再给用户最终答复。
 9. 不允许把 summary 描述成后台任务；只有在 summary 完成或明确判定无需更新之后，才能给用户最终答复。
 `
