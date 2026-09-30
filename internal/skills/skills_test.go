@@ -32,7 +32,18 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read installed query skill: %v", err)
 	}
-	for _, want := range []string{"平台原生文件搜索", "code_refs", "每个激活的知识类型最多打开 1-3 篇正文", "直接执行 Summary Gate", "不得创建中转文件"} {
+	for _, want := range []string{
+		"平台原生文件搜索",
+		"code_refs",
+		"每个激活的知识类型最多打开 1-3 篇正文",
+		"初始知识预算",
+		"章节投影",
+		"详情句柄",
+		"不得把 Markdown 逐词删除后重新拼接",
+		"证据冲突或不足时允许突破预算",
+		"直接执行 Summary Gate",
+		"不得创建中转文件",
+	} {
 		if !strings.Contains(string(query), want) {
 			t.Fatalf("query skill missing direct workflow rule %q", want)
 		}
@@ -42,7 +53,28 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read installed summary skill: %v", err)
 	}
-	for _, want := range []string{"`SKIP`", "`UPDATE`", "`MERGE`", "`CREATE`", "code_refs", "Trouble 二次准入", "裸日志", "低于 70/100 时丢弃", "## 判断分支", "文件超过 8 KiB", "超过 12 KiB 必须立即拆分", "至少有一个有效判断分支", "直接自检"} {
+	for _, want := range []string{
+		"`SKIP`",
+		"`UPDATE`",
+		"`MERGE`",
+		"`CREATE`",
+		"code_refs",
+		"Trouble 二次准入",
+		"裸日志",
+		"低于 70/100 时丢弃",
+		"## 判断分支",
+		"不得为了在 Query 与 Summary 之间传递状态而创建临时 JSON",
+		"只改动拥有该事实的最小章节",
+		"判断分支必须原子化",
+		"目标不超过 4 KiB",
+		"Module 初始投影目标不超过 5 KiB",
+		"核心入口 + 详情标题",
+		"文件超过 8 KiB",
+		"超过 12 KiB 必须立即拆分",
+		"至少有一个有效判断分支",
+		"本轮没有创建中转 JSON",
+		"直接自检",
+	} {
 		if !strings.Contains(string(summary), want) {
 			t.Fatalf("summary skill missing validation gate %q", want)
 		}
@@ -63,10 +95,18 @@ func TestInstallSkillsCopiesEntireSkillDirectory(t *testing.T) {
 		"压缩前事实台账",
 		"证据锚点至少保留 80%",
 		"Trouble 事件升维与聚类",
+		"查询投影优化",
+		"判断分支必须原子化",
+		"形成查询投影层次",
+		"目标不超过 4 KiB",
+		"超过 6 KiB 必须继续",
+		"核心入口 + 详情标题",
+		"禁止逐词删减后重新拼接",
 		"稳定事实必须映射到",
 		"最终有效结论裁决",
 		"全部稳定事实均已映射",
 		"首屏必须能完成症状确认和第一次分流",
+		"只读取初始投影即可理解主题",
 		"`KEEP`",
 		"`REPLACE`",
 		"`MOVE`",
